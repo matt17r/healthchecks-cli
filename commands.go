@@ -25,6 +25,7 @@ type command struct {
 
 // commands is the registry, in display order.
 var commands = []command{
+	{"project", "Manage projects (API keys) — list, add, use, remove (alias: projects)", false, true, false, cmdProject},
 	{"checks", "List checks (alias: ls)", false, false, false, cmdChecks},
 	{"get", "Show a single check by uuid or unique key", false, false, false, cmdGet},
 	{"pings", "List recent pings for a check", false, false, false, cmdPings},
@@ -39,11 +40,15 @@ var commands = []command{
 	{"delete", "Delete a check", true, false, false, cmdDelete},
 	{"completion", "Output a shell completion script (bash|zsh|fish)", false, true, false, cmdCompletion},
 	{"__complete-ids", "", false, true, true, cmdCompleteIDs},
+	{"__complete-projects", "", false, true, true, cmdCompleteProjects},
 }
 
 func lookupCommand(name string) *command {
 	if name == "ls" {
 		name = "checks"
+	}
+	if name == "projects" {
+		name = "project"
 	}
 	for i := range commands {
 		if commands[i].name == name {

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -50,8 +50,8 @@ func main() {
 
 	if cmd.write && !cfg.AllowWrite {
 		fatal(fmt.Errorf(
-			"%q is a write command but writes are disabled.\n"+
-				"Set HC_ALLOW_WRITE=1 (and make sure HC_API_KEY is a read-write key) to enable it.",
+			"%q is a write command but write access is disabled.\n"+
+				"Run 'hc project add' with a read-write key, or set HC_ALLOW_WRITE=1.",
 			cmd.name))
 	}
 
@@ -69,8 +69,7 @@ func fatal(err error) {
 // confirm prompts on stderr and reads a yes/no answer from stdin.
 func confirm(prompt string) bool {
 	fmt.Fprintf(os.Stderr, "%s [y/N] ", prompt)
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
+	line, err := readLine()
 	if err != nil {
 		return false
 	}
@@ -79,6 +78,30 @@ func confirm(prompt string) bool {
 		return true
 	}
 	return false
+}
+
+// readLine reads a single line from stdin one byte at a time, so it never
+// buffers past the newline. That lets it be safely interleaved with
+// term.ReadPassword, which reads directly from the file descriptor.
+func readLine() (string, error) {
+	var b []byte
+	buf := make([]byte, 1)
+	for {
+		n, err := os.Stdin.Read(buf)
+		if n > 0 {
+			if buf[0] == '\n' {
+				break
+			}
+			b = append(b, buf[0])
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", err
+		}
+	}
+	return strings.TrimRight(string(b), "\r"), nil
 }
 
 func usage() {
@@ -108,11 +131,17 @@ Commands:
   (* = write command; requires HC_ALLOW_WRITE=1 and a read-write API key)
 
 Environment:
-  HC_API_KEY      (required) healthchecks.io project API key
-  HC_BASE_URL     Management API base URL (default https://healthchecks.io)
-  HC_ALLOW_WRITE  set to 1/true to enable write commands
+  HC_API_KEY      API key override — bypasses saved projects, useful for CI
+  HC_BASE_URL     Management API base URL override
+  HC_ALLOW_WRITE  set to 1/true to enable write commands for the current key
   HC_PING_URL     ping host for 'hc ping' (default https://hc-ping.com;
                   for self-hosted, e.g. https://hc.example.com/ping)
+
+Projects (persistent API key storage):
+  hc project add           add a project interactively
+  hc project edit <name>   edit an existing project (key, name, access)
+  hc project use <name>    switch active project
+  hc project list          list configured projects
 
 Most commands accept --json to print the raw API response.
 

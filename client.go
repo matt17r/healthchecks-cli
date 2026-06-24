@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -51,6 +52,12 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 			return nil, err
 		}
 		reader = bytes.NewReader(buf)
+	}
+
+	for i := 0; i < len(c.APIKey); i++ {
+		if b := c.APIKey[i]; b < 0x20 || b == 0x7f {
+			return nil, fmt.Errorf("API key contains invalid characters (control bytes) — re-enter it, avoiding pasted whitespace or escape sequences")
+		}
 	}
 
 	req, err := http.NewRequest(method, url, reader)
@@ -165,6 +172,9 @@ func (c *Client) ListChecks(query string) ([]Check, []byte, error) {
 func (c *Client) GetCheck(id string) (*Check, []byte, error) {
 	data, err := c.do(http.MethodGet, "checks/"+id, nil)
 	if err != nil {
+		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {
+			return c.getCheckBySlug(id)
+		}
 		return nil, nil, err
 	}
 	var out Check
@@ -172,6 +182,25 @@ func (c *Client) GetCheck(id string) (*Check, []byte, error) {
 		return nil, data, err
 	}
 	return &out, data, nil
+}
+
+func (c *Client) getCheckBySlug(slug string) (*Check, []byte, error) {
+	checks, _, err := c.ListChecks("slug=" + url.QueryEscape(slug))
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(checks) == 0 {
+		return nil, nil, &APIError{Status: 404, Body: "no check found with uuid, unique_key, or slug " + slug}
+	}
+	if len(checks) > 1 {
+		return nil, nil, fmt.Errorf("%d checks match slug %q — use the uuid to disambiguate", len(checks), slug)
+	}
+	ck := checks[0]
+	raw, err := json.Marshal(ck)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &ck, raw, nil
 }
 
 func (c *Client) ListPings(id string) ([]Ping, []byte, error) {

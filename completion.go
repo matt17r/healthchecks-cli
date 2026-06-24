@@ -30,7 +30,7 @@ _hc() {
     local cur prev cmd
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    local cmds="checks ls get pings flips channels status ping create update pause resume delete completion help version"
+    local cmds="project checks ls get pings flips channels status ping create update pause resume delete completion help version"
 
     if [[ $COMP_CWORD -eq 1 ]]; then
         COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
@@ -41,6 +41,15 @@ _hc() {
 
     if [[ "$cmd" == "completion" ]]; then
         COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+        return
+    fi
+
+    if [[ "$cmd" == "project" || "$cmd" == "projects" ]]; then
+        if [[ $COMP_CWORD -eq 2 ]]; then
+            COMPREPLY=( $(compgen -W "list add use remove" -- "$cur") )
+        elif [[ "${COMP_WORDS[2]}" == "use" || "${COMP_WORDS[2]}" == "remove" ]]; then
+            COMPREPLY=( $(compgen -W "$(hc __complete-projects 2>/dev/null)" -- "$cur") )
+        fi
         return
     fi
 
@@ -75,6 +84,7 @@ const zshCompletion = `#compdef hc
 _hc() {
     local -a cmds
     cmds=(
+        'project:Manage projects (API keys)'
         'checks:List checks'
         'get:Show a single check'
         'pings:List recent pings'
@@ -99,6 +109,15 @@ _hc() {
     case $cmd in
         completion)
             _values 'shell' bash zsh fish
+            ;;
+        project|projects)
+            if (( CURRENT == 3 )); then
+                _values 'subcommand' list add use remove
+            elif [[ ${words[3]} == "use" || ${words[3]} == "remove" ]]; then
+                local -a names
+                names=(${(f)"$(hc __complete-projects 2>/dev/null)"})
+                _describe 'project' names
+            fi
             ;;
         get|pings|flips|update|pause|resume|delete|ping)
             local -a ids
@@ -127,13 +146,18 @@ function __hc_ids
     hc __complete-ids 2>/dev/null
 end
 
-set -l cmds checks ls get pings flips channels status ping create update pause resume delete completion help version
+function __hc_projects
+    hc __complete-projects 2>/dev/null
+end
+
+set -l cmds project projects checks ls get pings flips channels status ping create update pause resume delete completion help version
 set -l id_cmds get pings flips update pause resume delete ping
 
 # Disable file completion for hc by default.
 complete -c hc -f
 
 # Subcommands (only as the first argument).
+complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a project    -d "Manage projects (API keys)"
 complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a checks     -d "List checks"
 complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a get        -d "Show a single check"
 complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a pings      -d "List recent pings"
@@ -153,6 +177,10 @@ complete -c hc -n "__fish_seen_subcommand_from $id_cmds" -a "(__hc_ids)"
 
 # Shell names for 'completion'.
 complete -c hc -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
+
+# 'project' subcommands, and project names for those that take one.
+complete -c hc -n "__fish_seen_subcommand_from project projects; and not __fish_seen_subcommand_from list ls add use switch remove rm" -a "list add use remove" -d "project subcommand"
+complete -c hc -n "__fish_seen_subcommand_from use switch remove rm" -a "(__hc_projects)" -d project
 
 # Flags.
 complete -c hc -l json -d "Output raw JSON"

@@ -3,8 +3,13 @@
 A small, dependency-free CLI for the [healthchecks.io Management API](https://healthchecks.io/docs/api/),
 in the style of `gh` / `sqlcmd`: configure it with environment variables and run.
 
+Configure it with environment variables (great for CI) or save named **projects**
+with `hc project add` (great for day-to-day use across several healthchecks.io
+projects).
+
 Read-only by default. Write commands (create/update/pause/resume/delete) are
-disabled unless you opt in with `HC_ALLOW_WRITE=1` *and* supply a read-write API key.
+disabled unless you opt in — either with `HC_ALLOW_WRITE=1`, or by enabling write
+access on the saved project — *and* a read-write API key.
 
 ## Install
 
@@ -24,7 +29,8 @@ make install         # installs to /usr/local/bin (override with PREFIX=...)
 | `HC_ALLOW_WRITE` | no       | `false`                     | Set to `1`/`true` to enable write commands. |
 | `HC_PING_URL`    | no       | `https://hc-ping.com`       | Ping host for `hc ping`. Self-hosted is usually `https://hc.example.com/ping`. |
 
-\* `hc ping` and `hc completion` don't need `HC_API_KEY` — pinging only needs the check's uuid.
+\* `HC_API_KEY` is required only when no project is configured. `hc ping`, `hc
+completion`, and `hc project` never need it.
 
 API keys are created per-project in **Project Settings → API keys** on healthchecks.io.
 A read-only key omits `uuid`/`ping_url`; for those checks `hc` uses the stable
@@ -35,6 +41,36 @@ export HC_API_KEY=your-project-api-key
 hc checks
 ```
 
+### Saved projects
+
+Instead of exporting env vars, you can store one or more projects. `hc project add`
+prompts for a name, the API key (hidden as you type), and whether to allow writes,
+then **verifies the key against the API before saving** so a typo fails fast. If
+you enable write access, it also confirms the key is actually read-write (read-only
+keys are rejected from `GET /channels/`); if the key turns out to be read-only it
+saves the project as read-only rather than recording a write flag the server would
+reject:
+
+```sh
+hc project add                      # interactive
+hc project add work                 # name as an argument; still prompts for the key
+hc project add self --base-url https://hc.example.com   # self-hosted instance
+hc project add ci --no-verify       # skip the live check (offline setups)
+
+hc project list                     # show projects; * marks the active one
+hc project use <name>               # switch the active project
+hc project remove <name>            # delete a project (with confirmation)
+```
+
+Projects live in `~/.config/hc/config.json` (honouring `XDG_CONFIG_HOME`), written
+`0600`. **API keys are stored in plaintext**, the same as `gh` and the AWS CLI — fine
+for a personal workstation, but don't commit or sync that file.
+
+Resolution order: `HC_API_KEY` (if set) always wins; otherwise the active project
+is used. `HC_BASE_URL` / `HC_ALLOW_WRITE` still override per-invocation on top of a
+project. Enabling write access on a project persists that opt-in, so write commands
+work without `HC_ALLOW_WRITE` once the project allows it.
+
 ## Commands
 
 Read-only:
@@ -43,7 +79,7 @@ Read-only:
 hc checks                      # list all checks
 hc checks --tag prod --tag db  # filter by tag (repeatable, AND)
 hc checks --slug nightly-backup
-hc get <uuid|unique_key>       # show one check
+hc get <uuid|unique_key|slug>  # show one check (falls back to slug lookup)
 hc pings <uuid>                # recent pings
 hc flips <uuid>                # status changes
 hc channels                    # notification integrations
