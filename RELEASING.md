@@ -29,8 +29,7 @@ Get the tarball checksum Homebrew will verify:
 curl -sL https://github.com/matt17r/healthchecks-cli/archive/refs/tags/v0.1.0.tar.gz | shasum -a 256
 ```
 
-Copy `hc.rb` into the tap as `Formula/hc.rb`, then in it:
-- replace `matt17r`,
+Update `Formula/hc.rb` in the tap repo (`github.com/matt17r/homebrew-tap`):
 - set `url` to the new tag,
 - paste the `sha256` from above.
 
