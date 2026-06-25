@@ -3,11 +3,14 @@
 `hc` is distributed through a personal Homebrew **tap** (your own formula repo) as a
 **cask** — Homebrew's format for prebuilt binaries (formulae are meant to compile
 from source). [GoReleaser](https://goreleaser.com) cross-compiles the binaries,
-attaches them to the GitHub release, and regenerates `Casks/hc.rb` in the tap to
-point at them — so `brew install` just downloads the binary instead of compiling.
+attaches them to the GitHub release, and regenerates `Casks/hc.rb` to point at
+them — so `brew install` just downloads the binary instead of compiling.
 
-Releases are cut **locally** (no CI). GoReleaser uses your `gh` login, which has
-write access to both the source repo and the tap, so one command does everything.
+Releases are cut **locally** (no CI) via `scripts/release.sh`, which uses your `gh`
+login (write access to both the source repo and the tap). GoReleaser generates the
+cask but does **not** push it (`skip_upload`); the script runs `brew style --fix`
+on it first — goreleaser's template emits a stray blank line that the tap's
+`brew test-bot` CI would otherwise reject — then commits it to the tap.
 
 ## One-time setup
 
@@ -36,12 +39,15 @@ write access to both the source repo and the tap, so one command does everything
 git tag v0.1.0
 git push origin v0.1.0
 
-GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
+scripts/release.sh           # or: scripts/release.sh v0.1.0
 ```
 
-That one `goreleaser` command builds every OS/arch, creates the GitHub release and
-uploads the archives + checksums, then commits the updated cask to the tap. Bump
-the tag for each subsequent release.
+`scripts/release.sh` builds every OS/arch, creates the GitHub release and uploads
+the archives + checksums, lint-fixes the generated cask with `brew style --fix`,
+then commits it to the tap. Bump the tag for each subsequent release.
+
+Under the hood it's `goreleaser release --clean` followed by `brew style --fix` and
+a `git push` to the tap; run those by hand if you need to.
 
 ### Dry runs
 
@@ -53,11 +59,14 @@ goreleaser release --snapshot --clean  # build everything into dist/, touch noth
 `--snapshot` doesn't need a tag or a token — handy for confirming the build matrix
 and the generated `dist/homebrew/Casks/hc.rb` before doing it for real.
 
-### Committing the cask by hand instead
+### Why the cask isn't pushed by GoReleaser
 
-If you'd rather not let GoReleaser push to the tap, set `skip_upload: "true"` under
-`homebrew_casks` in `.goreleaser.yaml`. GoReleaser then only writes the cask into
-`dist/`, and you copy it into your local tap clone and commit it yourself.
+`homebrew_casks` has `skip_upload: "true"`, so GoReleaser writes the cask into
+`dist/` but doesn't push it. That gap is deliberate: GoReleaser's generated cask
+trips `brew test-bot`'s `Layout/EmptyLinesAroundBlockBody` audit (a stray blank
+line before the closing `end`), so `scripts/release.sh` runs `brew style --fix` on
+it before committing to the tap. Pushing straight from GoReleaser would land an
+unlinted cask and a red CI run on the tap.
 
 ## Installing
 

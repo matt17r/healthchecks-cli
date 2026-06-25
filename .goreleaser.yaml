@@ -52,18 +52,22 @@ changelog:
       - "^test:"
       - "^chore:"
 
-# Generates Casks/hc.rb in the tap and pushes it. With a local `gh` token the
-# same credentials cover both the release upload and this push. Set skip_upload
-# to "true" to only write the cask into dist/ for manual committing.
+# Generates Casks/hc.rb into dist/. We deliberately DON'T let goreleaser push it
+# to the tap (skip_upload): goreleaser would generate and push in one step,
+# leaving no gap to lint the cask, and its template emits a stray blank line that
+# trips brew's Layout/EmptyLinesAroundBlockBody audit. Instead scripts/release.sh
+# runs `brew style --fix` on the generated cask and pushes it to the tap.
 homebrew_casks:
   - name: hc
+    skip_upload: "true"
     repository:
       owner: matt17r
       name: homebrew-tap
       branch: main
     directory: Casks
     homepage: "https://github.com/matt17r/healthchecks-cli"
-    description: "A small, dependency-free CLI for the healthchecks.io Management API"
+    # No leading article — brew's Cask/Desc audit rejects "A …"/"The …".
+    description: "Small, dependency-free CLI for the healthchecks.io Management API"
     commit_author:
       name: Matthew Lindfield Seager
       email: matt@matt17r.com
@@ -71,7 +75,6 @@ homebrew_casks:
     # Strip the quarantine xattr on install so `hc` runs without a warning.
     hooks:
       post:
+        # Modifier-if form keeps brew's Style/IfUnlessModifier audit happy.
         install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hc"]
-          end
+          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hc"] if OS.mac?
