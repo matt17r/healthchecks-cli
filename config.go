@@ -23,6 +23,10 @@ type Profile struct {
 	APIKey     string `json:"api_key"`
 	AllowWrite bool   `json:"allow_write"`
 	BaseURL    string `json:"base_url,omitempty"`
+	// PingKey is the project-level key for slug-based check-ins
+	// (hc-ping.com/<ping-key>/<slug>). It is a separate credential from APIKey
+	// and is not exposed by the Management API, so it can only be pasted in.
+	PingKey string `json:"ping_key,omitempty"`
 }
 
 // ProfilesFile is the on-disk format of ~/.config/hc/config.json.
@@ -79,6 +83,24 @@ func loadConfig() (*Config, error) {
 		BaseURL:    baseURL,
 		AllowWrite: p.AllowWrite || truthy(os.Getenv("HC_ALLOW_WRITE")),
 	}, nil
+}
+
+// pingKey resolves the key for slug-based pinging. HC_PING_KEY wins (handy for
+// CI); otherwise the active saved project's stored key is used. Best-effort: a
+// missing or unreadable config simply yields "". Needs no API key, so 'hc ping'
+// can stay standalone.
+func pingKey() string {
+	if k := cleanAPIKey(os.Getenv("HC_PING_KEY")); k != "" {
+		return k
+	}
+	pf, err := loadProfilesFile()
+	if err != nil {
+		return ""
+	}
+	if p := pf.active(); p != nil {
+		return p.PingKey
+	}
+	return ""
 }
 
 // profilesPath returns the path to ~/.config/hc/config.json, respecting XDG.

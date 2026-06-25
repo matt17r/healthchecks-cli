@@ -29,7 +29,7 @@ func cmdProject(_ *Client, _ *Config, args []string) error {
 	case "remove", "rm":
 		return projectRemove(args)
 	default:
-		return fmt.Errorf("unknown subcommand %q\n\nUsage: hc project [list|use <name>|add|edit <name>|remove <name>]", sub)
+		return fmt.Errorf("unknown subcommand %q\n\nUsage: hc project [list|use <name>|add|edit [name]|remove <name>]", sub)
 	}
 }
 
@@ -47,7 +47,7 @@ func projectList() error {
 	}
 
 	w := newTabwriter()
-	fmt.Fprintln(w, "  NAME\tACCESS\tURL")
+	fmt.Fprintln(w, "  NAME\tACCESS\tPING KEY\tURL")
 	for _, p := range pf.Projects {
 		marker := "  "
 		if p.Name == pf.Current {
@@ -57,13 +57,17 @@ func projectList() error {
 		if p.AllowWrite {
 			access = "read-write"
 		}
-		fmt.Fprintf(w, "%s%s\t%s\t%s\n", marker, p.Name, access, projectHost(p.BaseURL))
+		pingKey := "-"
+		if p.PingKey != "" {
+			pingKey = "set"
+		}
+		fmt.Fprintf(w, "%s%s\t%s\t%s\t%s\n", marker, p.Name, access, pingKey, projectHost(p.BaseURL))
 	}
 	w.Flush()
 	fmt.Println()
 	fmt.Println("  hc project use <name>    switch active project")
 	fmt.Println("  hc project add           add another project")
-	fmt.Println("  hc project edit <name>   edit an existing project")
+	fmt.Println("  hc project edit [name]   edit a project (default: active)")
 	return nil
 }
 
@@ -162,21 +166,9 @@ func projectAdd(args []string) error {
 	}
 
 	// API key — masked when stdin is a terminal so it doesn't appear on screen.
-	fmt.Print("API key: ")
-	var apiKey string
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		b, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println()
-		if err != nil {
-			return err
-		}
-		apiKey = cleanAPIKey(string(b))
-	} else {
-		apiKey, err = readLine()
-		if err != nil {
-			return err
-		}
-		apiKey = cleanAPIKey(apiKey)
+	apiKey, err := readSecret("API key: ")
+	if err != nil {
+		return err
 	}
 	if apiKey == "" {
 		return fmt.Errorf("API key cannot be empty")
@@ -190,6 +182,15 @@ func projectAdd(args []string) error {
 	}
 	ans = strings.ToLower(strings.TrimSpace(ans))
 	allowWrite := ans == "y" || ans == "yes"
+
+	// Optional ping key for slug-based check-ins. It's not available via the API,
+	// so it has to be pasted from the web UI; blank skips it (add it later with
+	// 'hc project edit').
+	fmt.Println("Ping key — find it in Project Settings on healthchecks.io; enables 'hc ping <slug>'. Leave blank to skip.")
+	pingKeyVal, err := readSecret("Ping key: ")
+	if err != nil {
+		return err
+	}
 
 	// Normalise: store empty for the default host.
 	base := *baseURL
@@ -236,6 +237,7 @@ func projectAdd(args []string) error {
 		APIKey:     apiKey,
 		AllowWrite: allowWrite,
 		BaseURL:    base,
+		PingKey:    pingKeyVal,
 	})
 
 	isFirst := pf.Current == ""
@@ -278,10 +280,11 @@ func projectEdit(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(pos) < 1 {
-		return fmt.Errorf("usage: hc project edit <name>")
+	// Name is optional: with no argument, edit the active project.
+	var name string
+	if len(pos) > 0 {
+		name = pos[0]
 	}
-	name := pos[0]
 
 	if *baseURL != "" && *baseURL != defaultBaseURL {
 		if err := validateBaseURL(*baseURL); err != nil {
@@ -292,6 +295,14 @@ func projectEdit(args []string) error {
 	pf, err := loadProfilesFile()
 	if err != nil {
 		return err
+	}
+	if name == "" {
+		if pf.Current == "" {
+			return fmt.Errorf("no active project — specify one: hc project edit <name>")
+		}
+		name = pf.Current
+		// The Name prompt below shows which project, so don't repeat it here.
+		fmt.Println("No project specified — editing the active project.")
 	}
 
 	idx := -1
@@ -325,21 +336,9 @@ func projectEdit(args []string) error {
 	}
 
 	// API key — masked when stdin is a terminal; blank keeps the existing key.
-	fmt.Print("API key (leave blank to keep): ")
-	var apiKey string
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		b, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println()
-		if err != nil {
-			return err
-		}
-		apiKey = cleanAPIKey(string(b))
-	} else {
-		apiKey, err = readLine()
-		if err != nil {
-			return err
-		}
-		apiKey = cleanAPIKey(apiKey)
+	apiKey, err := readSecret("API key (leave blank to keep): ")
+	if err != nil {
+		return err
 	}
 	if apiKey == "" {
 		apiKey = existing.APIKey
@@ -363,6 +362,18 @@ func projectEdit(args []string) error {
 		}
 		ans = strings.ToLower(strings.TrimSpace(ans))
 		allowWrite = ans == "y" || ans == "yes"
+	}
+
+	// Ping key — blank keeps the existing one, so this is also how you add a key
+	// to a project that didn't have one. find it in Project Settings on
+	// healthchecks.io; it enables 'hc ping <slug>'.
+	fmt.Println("Ping key — find it in Project Settings; enables 'hc ping <slug>'. Leave blank to keep.")
+	pingKeyVal, err := readSecret("Ping key: ")
+	if err != nil {
+		return err
+	}
+	if pingKeyVal == "" {
+		pingKeyVal = existing.PingKey
 	}
 
 	// Base URL — flag value wins; otherwise keep existing.
@@ -411,6 +422,7 @@ func projectEdit(args []string) error {
 		APIKey:     apiKey,
 		AllowWrite: allowWrite,
 		BaseURL:    base,
+		PingKey:    pingKeyVal,
 	}
 	if pf.Current == name && newName != name {
 		pf.Current = newName
@@ -426,6 +438,26 @@ func projectEdit(args []string) error {
 	}
 	fmt.Printf("Updated %q (%s).\n", newName, access)
 	return nil
+}
+
+// readSecret prompts for a secret on stdout and reads it, masking the input when
+// stdin is a terminal so it doesn't appear on screen. Paste artefacts and
+// control characters are stripped the same way API keys are.
+func readSecret(prompt string) (string, error) {
+	fmt.Print(prompt)
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		b, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return "", err
+		}
+		return cleanAPIKey(string(b)), nil
+	}
+	s, err := readLine()
+	if err != nil {
+		return "", err
+	}
+	return cleanAPIKey(s), nil
 }
 
 // validateBaseURL checks a user-supplied base URL is a well-formed http(s) URL.

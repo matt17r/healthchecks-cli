@@ -169,6 +169,43 @@ func (c *Client) ListChecks(query string) ([]Check, []byte, error) {
 	return out.Checks, data, nil
 }
 
+// looksLikeUUID reports whether s has the 8-4-4-4-12 hex shape of a check uuid.
+func looksLikeUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if s[i] != '-' {
+				return false
+			}
+			continue
+		}
+		b := s[i]
+		isHex := (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
+		if !isHex {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveID turns a user-supplied identifier into one usable in API paths. A
+// uuid is returned unchanged with no request. Anything else is resolved via
+// GetCheck, which accepts a unique_key directly and otherwise falls back to a
+// slug lookup — so checks can be addressed by their human-friendly slug instead
+// of the (now-hidden) uuid.
+func (c *Client) resolveID(id string) (string, error) {
+	if looksLikeUUID(id) {
+		return id, nil
+	}
+	ck, _, err := c.GetCheck(id)
+	if err != nil {
+		return "", err
+	}
+	return ck.ID(), nil
+}
+
 func (c *Client) GetCheck(id string) (*Check, []byte, error) {
 	data, err := c.do(http.MethodGet, "checks/"+id, nil)
 	if err != nil {
@@ -193,7 +230,7 @@ func (c *Client) getCheckBySlug(slug string) (*Check, []byte, error) {
 		return nil, nil, &APIError{Status: 404, Body: "no check found with uuid, unique_key, or slug " + slug}
 	}
 	if len(checks) > 1 {
-		return nil, nil, fmt.Errorf("%d checks match slug %q — use the uuid to disambiguate", len(checks), slug)
+		return nil, nil, fmt.Errorf("%d checks match slug %q — re-run with --show-secrets to see uuids, then pass one to disambiguate", len(checks), slug)
 	}
 	ck := checks[0]
 	raw, err := json.Marshal(ck)

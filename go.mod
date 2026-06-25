@@ -1,4 +1,4 @@
-module github.com/matthew/healthchecks-cli
+module github.com/matt17r/healthchecks-cli
 
 go 1.25.0
 

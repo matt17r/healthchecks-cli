@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -34,36 +37,94 @@ func main() {
 		os.Exit(2)
 	}
 
+	jsonMode := wantsJSON(args[1:])
+
 	// Standalone commands (ping, completion, ...) manage their own config and
 	// don't need a management API key or client.
 	if cmd.standalone {
 		if err := cmd.run(nil, nil, args[1:]); err != nil {
-			fatal(err)
+			handleExit(err, jsonMode)
 		}
 		return
 	}
 
 	cfg, err := loadConfig()
 	if err != nil {
-		fatal(err)
+		handleExit(err, jsonMode)
 	}
 
 	if cmd.write && !cfg.AllowWrite {
-		fatal(fmt.Errorf(
+		handleExit(fmt.Errorf(
 			"%q is a write command but write access is disabled.\n"+
 				"Run 'hc project add' with a read-write key, or set HC_ALLOW_WRITE=1.",
-			cmd.name))
+			cmd.name), jsonMode)
 	}
 
 	client := newClient(cfg)
 	if err := cmd.run(client, cfg, args[1:]); err != nil {
-		fatal(err)
+		handleExit(err, jsonMode)
 	}
 }
 
-func fatal(err error) {
-	fmt.Fprintf(os.Stderr, "hc: %v\n", err)
-	os.Exit(1)
+// handleExit reports a terminal error and exits with a code that lets callers
+// (scripts and agents) branch on the failure class:
+//
+//	0  success
+//	1  generic runtime error
+//	2  usage error (bad flag or argument)
+//	3  authentication / permission denied (HTTP 401/403)
+//	4  not found (HTTP 404)
+//
+// In --json mode the error is emitted as a JSON object on stdout
+// ({"error":…,"status":…}) so success and failure share one parse path;
+// otherwise it's a plain "hc: …" line on stderr.
+func handleExit(err error, jsonMode bool) {
+	if errors.Is(err, flag.ErrHelp) {
+		os.Exit(0) // --help: usage already printed to stderr
+	}
+	var ue *usageError
+	if errors.As(err, &ue) {
+		os.Exit(2) // the flag package already printed the message and usage
+	}
+
+	code := 1
+	status := 0
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		status = apiErr.Status
+		switch apiErr.Status {
+		case 401, 403:
+			code = 3
+		case 404:
+			code = 4
+		}
+	}
+
+	if jsonMode {
+		obj := map[string]any{"error": err.Error()}
+		if status != 0 {
+			obj["status"] = status
+		}
+		b, _ := json.Marshal(obj)
+		fmt.Fprintln(os.Stdout, string(b))
+	} else {
+		fmt.Fprintf(os.Stderr, "hc: %v\n", err)
+	}
+	os.Exit(code)
+}
+
+// wantsJSON reports whether --json (or -json) appears among a command's args,
+// so the dispatcher can format terminal errors to match.
+func wantsJSON(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			break // end of flags
+		}
+		if a == "-json" || a == "--json" {
+			return true
+		}
+	}
+	return false
 }
 
 // confirm prompts on stderr and reads a yes/no answer from stdin.
@@ -136,23 +197,36 @@ Environment:
   HC_ALLOW_WRITE  set to 1/true to enable write commands for the current key
   HC_PING_URL     ping host for 'hc ping' (default https://hc-ping.com;
                   for self-hosted, e.g. https://hc.example.com/ping)
+  HC_PING_KEY     project ping key, enabling 'hc ping <slug>' (otherwise read
+                  from the active project; find it in Project Settings)
 
 Projects (persistent API key storage):
   hc project add           add a project interactively
-  hc project edit <name>   edit an existing project (key, name, access)
+  hc project edit [name]   edit a project (defaults to the active one)
   hc project use <name>    switch active project
   hc project list          list configured projects
 
-Most commands accept --json to print the raw API response.
+Most commands accept --json to print the raw API response (NDJSON for lists).
+Run 'hc <command> --help' for a command's usage, flags, and examples.
+
+Secrets:
+  A check's uuid is its ping credential, so uuids and ping URLs are hidden by
+  default. Address checks by their slug instead; pass --show-secrets to reveal
+  the uuid/ping URL (treat that output as sensitive).
+
+Exit codes:
+  0 success   1 error   2 usage   3 auth/forbidden   4 not found
 
 Examples:
   hc checks
-  hc checks --tag prod --tag db
-  hc get <uuid> --json
-  hc pings <uuid>
-  hc ping <uuid>            # signal success
-  hc ping <uuid> fail       # signal failure (also: start, log, <exit-code>)
-  HC_ALLOW_WRITE=1 hc pause <uuid>
+  hc checks --status down            # filter by status (also --tag, --slug)
+  hc get <slug> --json
+  hc pings <slug>
+  hc pause <slug>                    # write commands accept a slug too
+  hc get <slug> --show-secrets       # reveal the uuid + ping URL
+  hc open <slug>                     # open the check's dashboard page
+  hc ping <slug>                     # signal success (needs a ping key)
+  hc ping <slug> fail                # signal failure (also: start, log, <exit-code>)
   hc completion fish > ~/.config/fish/completions/hc.fish
 `)
 }

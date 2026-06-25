@@ -1,0 +1,77 @@
+# GoReleaser configuration for hc.
+# Driven locally (no CI) — see RELEASING.md. Validate with `goreleaser check`.
+version: 2
+
+project_name: hc
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - binary: hc
+    main: .
+    env:
+      - CGO_ENABLED=0
+    # -trimpath strips local filesystem paths (e.g. /Users/<you>/...) from the
+    # binary's debug info so releases don't leak the build machine's layout.
+    flags:
+      - -trimpath
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Match the Makefile's version injection.
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Generates Casks/hc.rb in the tap and pushes it. With a local `gh` token the
+# same credentials cover both the release upload and this push. Set skip_upload
+# to "true" to only write the cask into dist/ for manual committing.
+homebrew_casks:
+  - name: hc
+    repository:
+      owner: matt17r
+      name: homebrew-tap
+      branch: main
+    directory: Casks
+    homepage: "https://github.com/matt17r/healthchecks-cli"
+    description: "A small, dependency-free CLI for the healthchecks.io Management API"
+    commit_author:
+      name: Matthew Lindfield Seager
+      email: matt@matt17r.com
+    # The binary is unsigned, so macOS Gatekeeper quarantines it on download.
+    # Strip the quarantine xattr on install so `hc` runs without a warning.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hc"]
+          end
