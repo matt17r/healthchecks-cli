@@ -53,6 +53,11 @@ func main() {
 		handleExit(err, jsonMode)
 	}
 
+	// Every command below talks to the Management API with cfg.APIKey. If that
+	// key came from HC_API_KEY and shadows a different active project, say so —
+	// otherwise 'hc project use' looks broken.
+	warnAPIKeyOverride()
+
 	if cmd.write && !cfg.AllowWrite {
 		handleExit(fmt.Errorf(
 			"%q is a write command but write access is disabled.\n"+
@@ -199,6 +204,8 @@ Environment:
                   for self-hosted, e.g. https://hc.example.com/ping)
   HC_PING_KEY     project ping key, enabling 'hc ping <slug>' (otherwise read
                   from the active project; find it in Project Settings)
+  HC_NO_KEY_WARNING  set to 1/true to silence the per-command note shown when
+                  HC_API_KEY/HC_PING_KEY overrides your active project
 
 Projects (persistent API key storage):
   hc project add           add a project interactively

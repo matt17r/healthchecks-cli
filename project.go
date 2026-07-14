@@ -64,6 +64,12 @@ func projectList() error {
 		fmt.Fprintf(w, "%s%s\t%s\t%s\t%s\n", marker, p.Name, access, pingKey, projectHost(p.BaseURL))
 	}
 	w.Flush()
+	if active := pf.active(); active != nil {
+		if desc := apiKeyOverrideDesc(pf, active.Name, active.APIKey); desc != "" {
+			fmt.Println()
+			fmt.Printf("  %s\n", desc)
+		}
+	}
 	fmt.Println()
 	fmt.Println("  hc project use <name>    switch active project")
 	fmt.Println("  hc project add           add another project")
@@ -105,6 +111,9 @@ func projectUse(args []string) error {
 	}
 	if pf.Current == name {
 		fmt.Printf("Already on %q.\n", name)
+		if desc := apiKeyOverrideDesc(pf, name, target.APIKey); desc != "" {
+			fmt.Printf("Note: %s\n", desc)
+		}
 		return nil
 	}
 
@@ -118,6 +127,9 @@ func projectUse(args []string) error {
 		access = "read-write"
 	}
 	fmt.Printf("Switched to %q (%s).\n", name, access)
+	if desc := apiKeyOverrideDesc(pf, name, target.APIKey); desc != "" {
+		fmt.Printf("Note: %s\n", desc)
+	}
 	return nil
 }
 
@@ -256,6 +268,9 @@ func projectAdd(args []string) error {
 
 	if isFirst {
 		fmt.Printf("Active project set to %q.\n", name)
+		if desc := apiKeyOverrideDesc(pf, name, apiKey); desc != "" {
+			fmt.Printf("Note: %s\n", desc)
+		}
 		return nil
 	}
 
@@ -268,6 +283,9 @@ func projectAdd(args []string) error {
 			return err
 		}
 		fmt.Printf("Switched to %q.\n", name)
+		if desc := apiKeyOverrideDesc(pf, name, apiKey); desc != "" {
+			fmt.Printf("Note: %s\n", desc)
+		}
 	}
 	return nil
 }

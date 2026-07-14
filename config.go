@@ -44,6 +44,80 @@ func (pf *ProfilesFile) active() *Profile {
 	return nil
 }
 
+// activeProfile is a best-effort lookup of the current saved project. A missing
+// or unreadable config simply yields nil, so callers can stay quiet rather than
+// error out (used by 'hc ping' and the override warnings).
+func activeProfile() *Profile {
+	pf, err := loadProfilesFile()
+	if err != nil {
+		return nil
+	}
+	return pf.active()
+}
+
+// apiKeyOverrideDesc describes how HC_API_KEY shadows the selection selName
+// (whose stored key is selKey). It returns "" when there's no override — the env
+// var is unset, or its value is exactly selKey (so the selection is already what
+// commands use). Otherwise the returned sentence names which saved project the
+// env key actually belongs to, when one matches, so the user knows precisely
+// which project's data they're seeing. Note selKey may be "" (a selection with
+// no stored key); a set env var still differs from it, which is the point.
+func apiKeyOverrideDesc(pf *ProfilesFile, selName, selKey string) string {
+	env := cleanAPIKey(os.Getenv("HC_API_KEY"))
+	if env == "" || env == selKey {
+		return ""
+	}
+	for i := range pf.Projects {
+		if pf.Projects[i].APIKey == env {
+			return fmt.Sprintf("HC_API_KEY is set and matches project %q — 'hc' commands show that project, not %q, until you unset HC_API_KEY.",
+				pf.Projects[i].Name, selName)
+		}
+	}
+	return fmt.Sprintf("HC_API_KEY is set — 'hc' commands use that key, not project %q, until you unset HC_API_KEY.", selName)
+}
+
+// warnAPIKeyOverride prints a one-line note to stderr when HC_API_KEY shadows the
+// active project with a *different* project — the case where 'hc project use'
+// appears to have no effect because the environment key silently wins (see
+// loadConfig). It's the terse per-command safety net; 'hc project use/add/list'
+// give the fuller version. HC_NO_KEY_WARNING silences this repetitive warning
+// (the project-command notes stay, since those are deliberate one-offs).
+func warnAPIKeyOverride() {
+	if truthy(os.Getenv("HC_NO_KEY_WARNING")) {
+		return
+	}
+	pf, err := loadProfilesFile()
+	if err != nil {
+		return
+	}
+	active := pf.active()
+	if active == nil {
+		return // just an env key in play; no selection to shadow
+	}
+	if desc := apiKeyOverrideDesc(pf, active.Name, active.APIKey); desc != "" {
+		fmt.Fprintf(os.Stderr, "hc: note: %s\n", desc)
+	}
+}
+
+// warnPingKeyOverride is the ping-key analogue: HC_PING_KEY shadows the active
+// project's stored ping key for slug check-ins. Unlike the API key, a project
+// with no stored ping key legitimately relies on HC_PING_KEY, so that case is
+// not treated as an override.
+func warnPingKeyOverride() {
+	if truthy(os.Getenv("HC_NO_KEY_WARNING")) {
+		return
+	}
+	env := cleanAPIKey(os.Getenv("HC_PING_KEY"))
+	if env == "" {
+		return
+	}
+	if p := activeProfile(); p != nil && p.PingKey != "" && p.PingKey != env {
+		fmt.Fprintf(os.Stderr,
+			"hc: note: HC_PING_KEY is set — pinging via that key, not your selected project %q's ping key. Unset HC_PING_KEY to use the project.\n",
+			p.Name)
+	}
+}
+
 func loadConfig() (*Config, error) {
 	// HC_API_KEY always wins — useful for CI and one-off overrides.
 	if key := cleanAPIKey(os.Getenv("HC_API_KEY")); key != "" {
@@ -93,11 +167,7 @@ func pingKey() string {
 	if k := cleanAPIKey(os.Getenv("HC_PING_KEY")); k != "" {
 		return k
 	}
-	pf, err := loadProfilesFile()
-	if err != nil {
-		return ""
-	}
-	if p := pf.active(); p != nil {
+	if p := activeProfile(); p != nil {
 		return p.PingKey
 	}
 	return ""

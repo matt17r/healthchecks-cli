@@ -596,6 +596,7 @@ func cmdPing(_ *Client, _ *Config, args []string) error {
 		if key == "" {
 			return fmt.Errorf("pinging %q by slug needs a ping key — set HC_PING_KEY or run 'hc project edit <name>' to save one\n(or pass the check's uuid or full ping URL instead)", id)
 		}
+		warnPingKeyOverride()
 		u = base + "/" + key + "/" + id
 		target = fmt.Sprintf("%q", id)
 	}
