@@ -48,6 +48,17 @@ func main() {
 		return
 	}
 
+	// Every command parses its flags (including --help) before it ever touches
+	// the client or config, so a help request needs neither — honor it here,
+	// or 'hc <cmd> --help' fails for a user who hasn't configured an API key
+	// yet, before it gets a chance to print anything.
+	if wantsHelp(args[1:]) {
+		if err := cmd.run(nil, nil, args[1:]); err != nil {
+			handleExit(err, jsonMode)
+		}
+		return
+	}
+
 	cfg, err := loadConfig()
 	if err != nil {
 		handleExit(err, jsonMode)
@@ -126,6 +137,18 @@ func wantsJSON(args []string) bool {
 			break // end of flags
 		}
 		if a == "-json" || a == "--json" {
+			return true
+		}
+	}
+	return false
+}
+
+func wantsHelp(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			break // end of flags
+		}
+		if a == "-h" || a == "-help" || a == "--help" {
 			return true
 		}
 	}

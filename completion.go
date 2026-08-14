@@ -1,6 +1,21 @@
 package main
 
-import "fmt"
+import (
+	"flag"
+	"fmt"
+	"os"
+)
+
+const completionHelp = `hc completion — output a shell completion script
+
+Usage:
+  hc completion <bash|zsh|fish|powershell>
+
+Examples:
+  hc completion fish > ~/.config/fish/completions/hc.fish
+  hc completion zsh > "${fpath[1]}/_hc"
+  hc completion bash > /usr/local/etc/bash_completion.d/hc
+  hc completion powershell | Out-String | Invoke-Expression   # add to $PROFILE`
 
 func cmdCompletion(_ *Client, _ *Config, args []string) error {
 	if len(args) < 1 {
@@ -15,6 +30,9 @@ func cmdCompletion(_ *Client, _ *Config, args []string) error {
 		fmt.Print(fishCompletion)
 	case "powershell":
 		fmt.Print(powershellCompletion)
+	case "-h", "--help", "help":
+		fmt.Fprintln(os.Stderr, completionHelp)
+		return flag.ErrHelp
 	default:
 		return fmt.Errorf("unsupported shell %q (use bash, zsh, fish, or powershell)", args[0])
 	}

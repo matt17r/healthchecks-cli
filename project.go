@@ -11,6 +11,18 @@ import (
 	"golang.org/x/term"
 )
 
+const projectHelp = `hc project — manage projects (API keys)
+
+Usage:
+  hc project [list|use <name>|add|edit [name]|remove <name>]
+
+Subcommands:
+  list           list configured projects (default; alias: ls)
+  use <name>     switch the active project (alias: switch)
+  add            add a project interactively
+  edit [name]    edit a project (defaults to the active one)
+  remove <name>  remove a project (alias: rm)`
+
 func cmdProject(_ *Client, _ *Config, args []string) error {
 	sub := ""
 	if len(args) > 0 {
@@ -28,6 +40,9 @@ func cmdProject(_ *Client, _ *Config, args []string) error {
 		return projectEdit(args)
 	case "remove", "rm":
 		return projectRemove(args)
+	case "-h", "--help", "help":
+		fmt.Fprintln(os.Stderr, projectHelp)
+		return flag.ErrHelp
 	default:
 		return fmt.Errorf("unknown subcommand %q\n\nUsage: hc project [list|use <name>|add|edit [name]|remove <name>]", sub)
 	}
