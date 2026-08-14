@@ -68,7 +68,14 @@ _hc() {
         if [[ $COMP_CWORD -eq 2 ]]; then
             COMPREPLY=( $(compgen -W "list add use edit remove" -- "$cur") )
         elif [[ "${COMP_WORDS[2]}" == "use" || "${COMP_WORDS[2]}" == "edit" || "${COMP_WORDS[2]}" == "remove" ]]; then
-            COMPREPLY=( $(compgen -W "$(hc __complete-projects 2>/dev/null)" -- "$cur") )
+            # compgen -W splits its wordlist on $IFS, which would shred a
+            # project name containing spaces into several fake candidates —
+            # so match prefixes by hand against whole lines instead.
+            COMPREPLY=()
+            local name
+            while IFS= read -r name; do
+                [[ -n "$name" && "$name" == "$cur"* ]] && COMPREPLY+=("$name")
+            done < <(hc __complete-projects 2>/dev/null)
         fi
         return
     fi
@@ -76,9 +83,11 @@ _hc() {
     case "$cmd" in
         get|pings|flips|open|update|pause|resume|delete|ping)
             if [[ "$cur" != -* ]]; then
-                local ids
-                ids=$(hc __complete-ids 2>/dev/null | cut -f1)
-                COMPREPLY=( $(compgen -W "$ids" -- "$cur") )
+                COMPREPLY=()
+                local id rest
+                while IFS=$'\t' read -r id rest; do
+                    [[ -n "$id" && "$id" == "$cur"* ]] && COMPREPLY+=("$id")
+                done < <(hc __complete-ids 2>/dev/null)
                 return
             fi
             ;;
@@ -235,11 +244,22 @@ function __hc_complete_projects { hc __complete-projects 2>$null }
 Register-ArgumentCompleter -Native -CommandName hc -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
+    # CompletionText is inserted onto the command line as-is, with no
+    # quoting done for us (unlike the built-in completers) — so a project
+    # name containing a space must be quoted here, or accepting it splits
+    # into multiple arguments once the line is actually run.
+    function __hc_quote($v) {
+        if ($v -match '[\s''"]') {
+            return "'" + ($v -replace "'", "''") + "'"
+        }
+        return $v
+    }
+
     $result = [System.Collections.Generic.List[System.Management.Automation.CompletionResult]]::new()
     function __hc_add($values) {
         foreach ($v in $values) {
             if ($v -like "$wordToComplete*") {
-                $result.Add([System.Management.Automation.CompletionResult]::new($v, $v, 'ParameterValue', $v))
+                $result.Add([System.Management.Automation.CompletionResult]::new((__hc_quote $v), $v, 'ParameterValue', $v))
             }
         }
     }
@@ -282,7 +302,7 @@ Register-ArgumentCompleter -Native -CommandName hc -ScriptBlock {
             $id = $parts[0]
             $desc = if ($parts.Count -gt 1) { $parts[1] } else { $id }
             if ($id -like "$wordToComplete*") {
-                $result.Add([System.Management.Automation.CompletionResult]::new($id, $id, 'ParameterValue', $desc))
+                $result.Add([System.Management.Automation.CompletionResult]::new((__hc_quote $id), $id, 'ParameterValue', $desc))
             }
         }
         return $result
