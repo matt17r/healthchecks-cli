@@ -4,7 +4,7 @@ import "fmt"
 
 func cmdCompletion(_ *Client, _ *Config, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: hc completion <bash|zsh|fish>")
+		return fmt.Errorf("usage: hc completion <bash|zsh|fish|powershell>")
 	}
 	switch args[0] {
 	case "bash":
@@ -13,8 +13,10 @@ func cmdCompletion(_ *Client, _ *Config, args []string) error {
 		fmt.Print(zshCompletion)
 	case "fish":
 		fmt.Print(fishCompletion)
+	case "powershell":
+		fmt.Print(powershellCompletion)
 	default:
-		return fmt.Errorf("unsupported shell %q (use bash, zsh, or fish)", args[0])
+		return fmt.Errorf("unsupported shell %q (use bash, zsh, fish, or powershell)", args[0])
 	}
 	return nil
 }
@@ -40,7 +42,7 @@ _hc() {
     cmd="${COMP_WORDS[1]}"
 
     if [[ "$cmd" == "completion" ]]; then
-        COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+        COMPREPLY=( $(compgen -W "bash zsh fish powershell" -- "$cur") )
         return
     fi
 
@@ -111,7 +113,7 @@ _hc() {
     local cmd=${words[2]}
     case $cmd in
         completion)
-            _values 'shell' bash zsh fish
+            _values 'shell' bash zsh fish powershell
             ;;
         project|projects)
             if (( CURRENT == 3 )); then
@@ -180,7 +182,7 @@ complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a completion -d "Outp
 complete -c hc -n "__fish_seen_subcommand_from $id_cmds" -a "(__hc_ids)"
 
 # Shell names for 'completion'.
-complete -c hc -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
+complete -c hc -n "__fish_seen_subcommand_from completion" -a "bash zsh fish powershell"
 
 # 'project' subcommands, and project names for those that take one.
 complete -c hc -n "__fish_seen_subcommand_from project projects; and not __fish_seen_subcommand_from list ls add use switch edit remove rm" -a "list add use edit remove" -d "project subcommand"
@@ -197,4 +199,88 @@ complete -c hc -n "__fish_seen_subcommand_from create update" -l name -l tags -l
 complete -c hc -n "__fish_seen_subcommand_from create" -l unique -d "Fields for create idempotency"
 complete -c hc -n "__fish_seen_subcommand_from delete" -l yes  -d "Skip confirmation"
 complete -c hc -n "__fish_seen_subcommand_from ping"   -l data -d "Body to attach to the ping"
+`
+
+// PowerShell ------------------------------------------------------------------
+
+const powershellCompletion = `# PowerShell completion for hc
+# install (current session): hc completion powershell | Out-String | Invoke-Expression
+# install (permanent): add the line above to your $PROFILE
+
+$__hcCommands = 'project', 'checks', 'ls', 'get', 'pings', 'flips', 'channels', 'status', 'open', 'ping', 'create', 'update', 'pause', 'resume', 'delete', 'completion', 'help', 'version'
+$__hcIdCommands = 'get', 'pings', 'flips', 'open', 'update', 'pause', 'resume', 'delete', 'ping'
+$__hcProjectSubcommands = 'list', 'add', 'use', 'edit', 'remove'
+
+function __hc_complete_ids { hc __complete-ids 2>$null }
+function __hc_complete_projects { hc __complete-projects 2>$null }
+
+Register-ArgumentCompleter -Native -CommandName hc -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+
+    $result = [System.Collections.Generic.List[System.Management.Automation.CompletionResult]]::new()
+    function __hc_add($values) {
+        foreach ($v in $values) {
+            if ($v -like "$wordToComplete*") {
+                $result.Add([System.Management.Automation.CompletionResult]::new($v, $v, 'ParameterValue', $v))
+            }
+        }
+    }
+
+    # CommandElements only contains *completed* words: with a trailing space
+    # (wordToComplete -eq '') the word being typed has no element at all, but
+    # with a partial word typed it's the last element. Normalize to $words,
+    # the list of words typed before the one currently being completed.
+    $tokens = $commandAst.CommandElements | ForEach-Object { $_.Extent.Text }
+    if ($wordToComplete -eq '') {
+        $words = $tokens
+    } else {
+        $words = $tokens[0..($tokens.Count - 2)]
+    }
+
+    if ($words.Count -le 1) {
+        __hc_add $__hcCommands
+        return $result
+    }
+
+    $cmd = $words[1]
+
+    if ($cmd -eq 'completion') {
+        __hc_add @('bash', 'zsh', 'fish', 'powershell')
+        return $result
+    }
+
+    if ($cmd -eq 'project' -or $cmd -eq 'projects') {
+        if ($words.Count -eq 2) {
+            __hc_add $__hcProjectSubcommands
+        } elseif ($words.Count -ge 3 -and ($words[2] -eq 'use' -or $words[2] -eq 'edit' -or $words[2] -eq 'remove')) {
+            __hc_add (__hc_complete_projects)
+        }
+        return $result
+    }
+
+    if (($__hcIdCommands -contains $cmd) -and ($wordToComplete -notlike '-*')) {
+        foreach ($line in (__hc_complete_ids)) {
+            $parts = $line -split "` + "`t" + `", 2
+            $id = $parts[0]
+            $desc = if ($parts.Count -gt 1) { $parts[1] } else { $id }
+            if ($id -like "$wordToComplete*") {
+                $result.Add([System.Management.Automation.CompletionResult]::new($id, $id, 'ParameterValue', $desc))
+            }
+        }
+        return $result
+    }
+
+    $flags = @('--json')
+    switch ($cmd) {
+        { $_ -in 'checks', 'ls' } { $flags = @('--json', '--show-secrets', '--status', '--tag', '--slug') }
+        { $_ -in 'get', 'pause', 'resume' } { $flags = @('--json', '--show-secrets') }
+        'open' { $flags = @('--show-secrets') }
+        'create' { $flags = @('--json', '--show-secrets', '--name', '--tags', '--desc', '--timeout', '--grace', '--schedule', '--tz', '--unique') }
+        'update' { $flags = @('--json', '--show-secrets', '--name', '--tags', '--desc', '--timeout', '--grace', '--schedule', '--tz') }
+        'delete' { $flags = @('--json', '--show-secrets', '--yes') }
+        'ping' { $flags = @('--data') }
+    }
+    __hc_add $flags
+    return $result
+}
 `

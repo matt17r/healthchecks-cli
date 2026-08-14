@@ -43,7 +43,7 @@ var commands = []command{
 	{"pause", "Pause monitoring of a check", true, false, false, cmdPause},
 	{"resume", "Resume monitoring of a check", true, false, false, cmdResume},
 	{"delete", "Delete a check", true, false, false, cmdDelete},
-	{"completion", "Output a shell completion script (bash|zsh|fish)", false, true, false, cmdCompletion},
+	{"completion", "Output a shell completion script (bash|zsh|fish|powershell)", false, true, false, cmdCompletion},
 	{"__complete-ids", "", false, true, true, cmdCompleteIDs},
 	{"__complete-projects", "", false, true, true, cmdCompleteProjects},
 }

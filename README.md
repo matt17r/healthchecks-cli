@@ -160,10 +160,10 @@ ping key. The ping key never appears in `hc`'s output.
 
 ## Shell completion
 
-`hc completion <bash|zsh|fish>` prints a completion script. Completions cover
-subcommands and flags, and suggest your check **slugs** for commands that take an
-identifier (via a hidden `hc __complete-ids` helper — it stays silent if no key
-is set, and suggests slugs rather than secret uuids).
+`hc completion <bash|zsh|fish|powershell>` prints a completion script. Completions
+cover subcommands and flags, and suggest your check **slugs** for commands that
+take an identifier (via a hidden `hc __complete-ids` helper — it stays silent if
+no key is set, and suggests slugs rather than secret uuids).
 
 ```sh
 # fish
@@ -174,6 +174,11 @@ hc completion zsh > "${fpath[1]}/_hc"
 
 # bash
 hc completion bash > /usr/local/etc/bash_completion.d/hc
+```
+
+```powershell
+# PowerShell — add to your $PROFILE
+hc completion powershell | Out-String | Invoke-Expression
 ```
 
 ## Output
