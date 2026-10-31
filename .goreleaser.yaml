@@ -75,6 +75,9 @@ homebrew_casks:
     # Strip the quarantine xattr on install so `hc` runs without a warning.
     hooks:
       post:
-        # Modifier-if form keeps brew's Style/IfUnlessModifier audit happy.
-        install: |
-          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hc"] if OS.mac?
+        # install_steps uses Homebrew's declarative steps DSL (postflight_steps);
+        # the raw-Ruby `install` option emits the deprecated postflight stanza.
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/hc"]
+          end
