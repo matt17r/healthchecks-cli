@@ -1,52 +1,85 @@
 package main
 
 import (
-	"flag"
+	"errors"
 	"fmt"
-	"os"
+	"strings"
 )
 
-const completionHelp = `hc completion — output a shell completion script
+const completionHelp = `{prog} completion — output a shell completion script
 
 Usage:
-  hc completion <bash|zsh|fish|powershell>
+  {prog} completion <bash|zsh|fish|powershell> [--name <command>]
+
+The script completes the name this program was invoked as ({prog}); pass
+--name to generate it for a different name, e.g. a symlink you'll create.
 
 Examples:
-  hc completion fish > ~/.config/fish/completions/hc.fish
-  hc completion zsh > "${fpath[1]}/_hc"
-  hc completion bash > /usr/local/etc/bash_completion.d/hc
-  hc completion powershell | Out-String | Invoke-Expression   # add to $PROFILE`
+  {prog} completion fish > ~/.config/fish/completions/{prog}.fish
+  {prog} completion zsh > "${fpath[1]}/_{prog}"
+  {prog} completion bash > /usr/local/etc/bash_completion.d/{prog}
+  {prog} completion powershell | Out-String | Invoke-Expression   # add to $PROFILE
+  {prog} completion fish --name hc > ~/.config/fish/completions/hc.fish`
 
 func cmdCompletion(_ *Client, _ *Config, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: hc completion <bash|zsh|fish|powershell>")
+	if len(args) > 0 && args[0] == "help" {
+		args = []string{"--help"}
 	}
-	switch args[0] {
+	fs := newCmdFlags("completion", completionHelp)
+	name := fs.String("name", prog, "command name to generate completions for")
+	pos, err := parsePermuted(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return errors.New(expand("usage: {prog} completion <bash|zsh|fish|powershell> [--name <command>]"))
+	}
+	if strings.TrimSpace(*name) == "" || strings.ContainsAny(*name, " \t\n/\\'\"$`") {
+		return fmt.Errorf("invalid --name %q", *name)
+	}
+	var script string
+	switch pos[0] {
 	case "bash":
-		fmt.Print(bashCompletion)
+		script = bashCompletion
 	case "zsh":
-		fmt.Print(zshCompletion)
+		script = zshCompletion
 	case "fish":
-		fmt.Print(fishCompletion)
+		script = fishCompletion
 	case "powershell":
-		fmt.Print(powershellCompletion)
-	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stderr, completionHelp)
-		return flag.ErrHelp
+		script = powershellCompletion
 	default:
-		return fmt.Errorf("unsupported shell %q (use bash, zsh, fish, or powershell)", args[0])
+		return fmt.Errorf("unsupported shell %q (use bash, zsh, fish, or powershell)", pos[0])
 	}
+	fmt.Print(renderCompletion(script, *name))
 	return nil
 }
 
+// completionIdent turns a command name into something safe to embed in shell
+// function and variable names (e.g. "healthchecks-cli" -> "healthchecks_cli").
+func completionIdent(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' {
+			return r
+		}
+		return '_'
+	}, name)
+}
+
+// renderCompletion fills the @@NAME@@ (command name, used for registration and
+// the __complete-* callbacks) and @@ID@@ (identifier-safe form, used for
+// function/variable names) placeholders in a completion script.
+func renderCompletion(script, name string) string {
+	return strings.NewReplacer("@@NAME@@", name, "@@ID@@", completionIdent(name)).Replace(script)
+}
+
 // Commands that accept a check identifier as their first positional argument;
-// the completion scripts offer real check IDs (via `hc __complete-ids`) here.
+// the completion scripts offer real check IDs (via `<name> __complete-ids`) here.
 //
 // bash ------------------------------------------------------------------------
 
-const bashCompletion = `# bash completion for hc
-# install: hc completion bash > /etc/bash_completion.d/hc   (or source it from ~/.bashrc)
-_hc() {
+const bashCompletion = `# bash completion for @@NAME@@
+# install: @@NAME@@ completion bash > /etc/bash_completion.d/@@NAME@@   (or source it from ~/.bashrc)
+_@@ID@@() {
     local cur prev cmd
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
@@ -75,7 +108,7 @@ _hc() {
             local name
             while IFS= read -r name; do
                 [[ -n "$name" && "$name" == "$cur"* ]] && COMPREPLY+=("$name")
-            done < <(hc __complete-projects 2>/dev/null)
+            done < <(@@NAME@@ __complete-projects 2>/dev/null)
         fi
         return
     fi
@@ -87,7 +120,7 @@ _hc() {
                 local id rest
                 while IFS=$'\t' read -r id rest; do
                     [[ -n "$id" && "$id" == "$cur"* ]] && COMPREPLY+=("$id")
-                done < <(hc __complete-ids 2>/dev/null)
+                done < <(@@NAME@@ __complete-ids 2>/dev/null)
                 return
             fi
             ;;
@@ -105,14 +138,14 @@ _hc() {
     esac
     COMPREPLY=( $(compgen -W "$flags" -- "$cur") )
 }
-complete -F _hc hc
+complete -F _@@ID@@ @@NAME@@
 `
 
 // zsh -------------------------------------------------------------------------
 
-const zshCompletion = `#compdef hc
-# install: hc completion zsh > "${fpath[1]}/_hc"  (then restart your shell)
-_hc() {
+const zshCompletion = `#compdef @@NAME@@
+# install: @@NAME@@ completion zsh > "${fpath[1]}/_@@ID@@"  (then restart your shell)
+_@@ID@@() {
     local -a cmds
     cmds=(
         'project:Manage projects (API keys)'
@@ -147,13 +180,13 @@ _hc() {
                 _values 'subcommand' list add use edit remove
             elif [[ ${words[3]} == "use" || ${words[3]} == "edit" || ${words[3]} == "remove" ]]; then
                 local -a names
-                names=(${(f)"$(hc __complete-projects 2>/dev/null)"})
+                names=(${(f)"$(@@NAME@@ __complete-projects 2>/dev/null)"})
                 _describe 'project' names
             fi
             ;;
         get|pings|flips|open|update|pause|resume|delete|ping)
             local -a ids
-            ids=(${(f)"$(hc __complete-ids 2>/dev/null | sed 's/\t/:/')"})
+            ids=(${(f)"$(@@NAME@@ __complete-ids 2>/dev/null | sed 's/\t/:/')"})
             _describe 'check' ids
             ;;
         checks|ls)
@@ -167,88 +200,88 @@ _hc() {
             ;;
     esac
 }
-_hc "$@"
+_@@ID@@ "$@"
 `
 
 // fish ------------------------------------------------------------------------
 
-const fishCompletion = `# fish completion for hc
-# install: hc completion fish > ~/.config/fish/completions/hc.fish
-function __hc_ids
-    hc __complete-ids 2>/dev/null
+const fishCompletion = `# fish completion for @@NAME@@
+# install: @@NAME@@ completion fish > ~/.config/fish/completions/@@NAME@@.fish
+function __@@ID@@_ids
+    @@NAME@@ __complete-ids 2>/dev/null
 end
 
-function __hc_projects
-    hc __complete-projects 2>/dev/null
+function __@@ID@@_projects
+    @@NAME@@ __complete-projects 2>/dev/null
 end
 
 set -l cmds project projects checks ls get pings flips channels status open ping create update pause resume delete completion help version
 set -l id_cmds get pings flips open update pause resume delete ping
 
-# Disable file completion for hc by default.
-complete -c hc -f
+# Disable file completion for @@NAME@@ by default.
+complete -c @@NAME@@ -f
 
 # Subcommands (only as the first argument).
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a project    -d "Manage projects (API keys)"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a checks     -d "List checks"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a get        -d "Show a single check"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a pings      -d "List recent pings"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a flips      -d "List status changes"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a channels   -d "List notification channels"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a status     -d "API/database availability"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a open       -d "Open a check in your browser"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a ping       -d "Ping a check"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a create     -d "Create a check"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a update     -d "Update a check"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a pause      -d "Pause a check"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a resume     -d "Resume a check"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a delete     -d "Delete a check"
-complete -c hc -n "not __fish_seen_subcommand_from $cmds" -a completion -d "Output a completion script"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a project    -d "Manage projects (API keys)"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a checks     -d "List checks"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a get        -d "Show a single check"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a pings      -d "List recent pings"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a flips      -d "List status changes"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a channels   -d "List notification channels"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a status     -d "API/database availability"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a open       -d "Open a check in your browser"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a ping       -d "Ping a check"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a create     -d "Create a check"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a update     -d "Update a check"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a pause      -d "Pause a check"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a resume     -d "Resume a check"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a delete     -d "Delete a check"
+complete -c @@NAME@@ -n "not __fish_seen_subcommand_from $cmds" -a completion -d "Output a completion script"
 
 # Check IDs for commands that take one.
-complete -c hc -n "__fish_seen_subcommand_from $id_cmds" -a "(__hc_ids)"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from $id_cmds" -a "(__@@ID@@_ids)"
 
 # Shell names for 'completion'.
-complete -c hc -n "__fish_seen_subcommand_from completion" -a "bash zsh fish powershell"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from completion" -a "bash zsh fish powershell"
 
 # 'project' subcommands, and project names for those that take one.
-complete -c hc -n "__fish_seen_subcommand_from project projects; and not __fish_seen_subcommand_from list ls add use switch edit remove rm" -a "list add use edit remove" -d "project subcommand"
-complete -c hc -n "__fish_seen_subcommand_from use switch edit remove rm" -a "(__hc_projects)" -d project
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from project projects; and not __fish_seen_subcommand_from list ls add use switch edit remove rm" -a "list add use edit remove" -d "project subcommand"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from use switch edit remove rm" -a "(__@@ID@@_projects)" -d project
 
 # Flags.
-complete -c hc -l json -d "Output raw JSON"
-complete -c hc -n "__fish_seen_subcommand_from checks ls get create update pause resume delete" -l show-secrets -d "Reveal uuids and ping URLs"
-complete -c hc -n "__fish_seen_subcommand_from checks ls" -l status -d "Filter by status (up, down, grace, paused)"
-complete -c hc -n "__fish_seen_subcommand_from checks ls" -l tag  -d "Filter by tag"
-complete -c hc -n "__fish_seen_subcommand_from checks ls" -l slug -d "Filter by slug"
-complete -c hc -n "__fish_seen_subcommand_from open" -l show-secrets -d "Print the URL instead of opening a browser"
-complete -c hc -n "__fish_seen_subcommand_from create update" -l name -l tags -l desc -l timeout -l grace -l schedule -l tz
-complete -c hc -n "__fish_seen_subcommand_from create" -l unique -d "Fields for create idempotency"
-complete -c hc -n "__fish_seen_subcommand_from delete" -l yes  -d "Skip confirmation"
-complete -c hc -n "__fish_seen_subcommand_from ping"   -l data -d "Body to attach to the ping"
+complete -c @@NAME@@ -l json -d "Output raw JSON"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from checks ls get create update pause resume delete" -l show-secrets -d "Reveal uuids and ping URLs"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from checks ls" -l status -d "Filter by status (up, down, grace, paused)"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from checks ls" -l tag  -d "Filter by tag"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from checks ls" -l slug -d "Filter by slug"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from open" -l show-secrets -d "Print the URL instead of opening a browser"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from create update" -l name -l tags -l desc -l timeout -l grace -l schedule -l tz
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from create" -l unique -d "Fields for create idempotency"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from delete" -l yes  -d "Skip confirmation"
+complete -c @@NAME@@ -n "__fish_seen_subcommand_from ping"   -l data -d "Body to attach to the ping"
 `
 
 // PowerShell ------------------------------------------------------------------
 
-const powershellCompletion = `# PowerShell completion for hc
-# install (current session): hc completion powershell | Out-String | Invoke-Expression
+const powershellCompletion = `# PowerShell completion for @@NAME@@
+# install (current session): @@NAME@@ completion powershell | Out-String | Invoke-Expression
 # install (permanent): add the line above to your $PROFILE
 
-$__hcCommands = 'project', 'checks', 'ls', 'get', 'pings', 'flips', 'channels', 'status', 'open', 'ping', 'create', 'update', 'pause', 'resume', 'delete', 'completion', 'help', 'version'
-$__hcIdCommands = 'get', 'pings', 'flips', 'open', 'update', 'pause', 'resume', 'delete', 'ping'
-$__hcProjectSubcommands = 'list', 'add', 'use', 'edit', 'remove'
+$__@@ID@@Commands = 'project', 'checks', 'ls', 'get', 'pings', 'flips', 'channels', 'status', 'open', 'ping', 'create', 'update', 'pause', 'resume', 'delete', 'completion', 'help', 'version'
+$__@@ID@@IdCommands = 'get', 'pings', 'flips', 'open', 'update', 'pause', 'resume', 'delete', 'ping'
+$__@@ID@@ProjectSubcommands = 'list', 'add', 'use', 'edit', 'remove'
 
-function __hc_complete_ids { hc __complete-ids 2>$null }
-function __hc_complete_projects { hc __complete-projects 2>$null }
+function __@@ID@@_complete_ids { @@NAME@@ __complete-ids 2>$null }
+function __@@ID@@_complete_projects { @@NAME@@ __complete-projects 2>$null }
 
-Register-ArgumentCompleter -Native -CommandName hc -ScriptBlock {
+Register-ArgumentCompleter -Native -CommandName @@NAME@@ -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     # CompletionText is inserted onto the command line as-is, with no
     # quoting done for us (unlike the built-in completers) — so a project
     # name containing a space must be quoted here, or accepting it splits
     # into multiple arguments once the line is actually run.
-    function __hc_quote($v) {
+    function __@@ID@@_quote($v) {
         if ($v -match '[\s''"]') {
             return "'" + ($v -replace "'", "''") + "'"
         }
@@ -256,10 +289,10 @@ Register-ArgumentCompleter -Native -CommandName hc -ScriptBlock {
     }
 
     $result = [System.Collections.Generic.List[System.Management.Automation.CompletionResult]]::new()
-    function __hc_add($values) {
+    function __@@ID@@_add($values) {
         foreach ($v in $values) {
             if ($v -like "$wordToComplete*") {
-                $result.Add([System.Management.Automation.CompletionResult]::new((__hc_quote $v), $v, 'ParameterValue', $v))
+                $result.Add([System.Management.Automation.CompletionResult]::new((__@@ID@@_quote $v), $v, 'ParameterValue', $v))
             }
         }
     }
@@ -276,33 +309,33 @@ Register-ArgumentCompleter -Native -CommandName hc -ScriptBlock {
     }
 
     if ($words.Count -le 1) {
-        __hc_add $__hcCommands
+        __@@ID@@_add $__@@ID@@Commands
         return $result
     }
 
     $cmd = $words[1]
 
     if ($cmd -eq 'completion') {
-        __hc_add @('bash', 'zsh', 'fish', 'powershell')
+        __@@ID@@_add @('bash', 'zsh', 'fish', 'powershell')
         return $result
     }
 
     if ($cmd -eq 'project' -or $cmd -eq 'projects') {
         if ($words.Count -eq 2) {
-            __hc_add $__hcProjectSubcommands
+            __@@ID@@_add $__@@ID@@ProjectSubcommands
         } elseif ($words.Count -ge 3 -and ($words[2] -eq 'use' -or $words[2] -eq 'edit' -or $words[2] -eq 'remove')) {
-            __hc_add (__hc_complete_projects)
+            __@@ID@@_add (__@@ID@@_complete_projects)
         }
         return $result
     }
 
-    if (($__hcIdCommands -contains $cmd) -and ($wordToComplete -notlike '-*')) {
-        foreach ($line in (__hc_complete_ids)) {
+    if (($__@@ID@@IdCommands -contains $cmd) -and ($wordToComplete -notlike '-*')) {
+        foreach ($line in (__@@ID@@_complete_ids)) {
             $parts = $line -split "` + "`t" + `", 2
             $id = $parts[0]
             $desc = if ($parts.Count -gt 1) { $parts[1] } else { $id }
             if ($id -like "$wordToComplete*") {
-                $result.Add([System.Management.Automation.CompletionResult]::new((__hc_quote $id), $id, 'ParameterValue', $desc))
+                $result.Add([System.Management.Automation.CompletionResult]::new((__@@ID@@_quote $id), $id, 'ParameterValue', $desc))
             }
         }
         return $result
@@ -318,7 +351,7 @@ Register-ArgumentCompleter -Native -CommandName hc -ScriptBlock {
         'delete' { $flags = @('--json', '--show-secrets', '--yes') }
         'ping' { $flags = @('--data') }
     }
-    __hc_add $flags
+    __@@ID@@_add $flags
     return $result
 }
 `

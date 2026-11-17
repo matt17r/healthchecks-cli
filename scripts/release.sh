@@ -21,7 +21,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 tag="${1:-$(git describe --tags --abbrev=0)}"
 tap_repo="matt17r/homebrew-tap"
-cask="dist/homebrew/Casks/hc.rb"
+cask="dist/homebrew/Casks/healthchecks-cli.rb"
 
 export GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token)}"
 
@@ -36,14 +36,14 @@ workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 gh repo clone "$tap_repo" "$workdir" -- --depth 1 --quiet
 mkdir -p "$workdir/Casks"
-cp "$cask" "$workdir/Casks/hc.rb"
-git -C "$workdir" add Casks/hc.rb
+cp "$cask" "$workdir/Casks/healthchecks-cli.rb"
+git -C "$workdir" add Casks/healthchecks-cli.rb
 if git -C "$workdir" diff --cached --quiet; then
 	echo "    Cask unchanged; nothing to push."
 else
-	git -C "$workdir" commit --quiet -m "hc $tag"
+	git -C "$workdir" commit --quiet -m "healthchecks-cli $tag"
 	git -C "$workdir" push --quiet origin HEAD
-	echo "    Pushed Casks/hc.rb for $tag."
+	echo "    Pushed Casks/healthchecks-cli.rb for $tag."
 fi
 
 echo "==> Released $tag"

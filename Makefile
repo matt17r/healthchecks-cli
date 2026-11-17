@@ -5,10 +5,10 @@ PREFIX  ?= /usr/local
 .PHONY: build install test vet clean
 
 build:
-	go build $(LDFLAGS) -o hc .
+	go build $(LDFLAGS) -o healthchecks-cli .
 
 install: build
-	install -m 0755 hc $(PREFIX)/bin/hc
+	install -m 0755 healthchecks-cli $(PREFIX)/bin/healthchecks-cli
 
 vet:
 	go vet ./...
@@ -17,4 +17,4 @@ test: vet
 	go test ./...
 
 clean:
-	rm -f hc
+	rm -f healthchecks-cli

@@ -11,10 +11,10 @@ import (
 	"golang.org/x/term"
 )
 
-const projectHelp = `hc project — manage projects (API keys)
+const projectHelp = `{prog} project — manage projects (API keys)
 
 Usage:
-  hc project [list|use <name>|add|edit [name]|remove <name>]
+  {prog} project [list|use <name>|add|edit [name]|remove <name>]
 
 Subcommands:
   list           list configured projects (default; alias: ls)
@@ -41,10 +41,10 @@ func cmdProject(_ *Client, _ *Config, args []string) error {
 	case "remove", "rm":
 		return projectRemove(args)
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stderr, projectHelp)
+		fmt.Fprintln(os.Stderr, expand(projectHelp))
 		return flag.ErrHelp
 	default:
-		return fmt.Errorf("unknown subcommand %q\n\nUsage: hc project [list|use <name>|add|edit [name]|remove <name>]", sub)
+		return fmt.Errorf(expand("unknown subcommand %q\n\nUsage: {prog} project [list|use <name>|add|edit [name]|remove <name>]"), sub)
 	}
 }
 
@@ -56,8 +56,8 @@ func projectList() error {
 	if len(pf.Projects) == 0 {
 		fmt.Println("No projects configured.")
 		fmt.Println()
-		fmt.Println("  hc project add          add a project interactively")
-		fmt.Println("  HC_API_KEY=<key> hc …   use a key directly (not saved)")
+		fmt.Println(expand("  {prog} project add          add a project interactively"))
+		fmt.Println(expand("  HC_API_KEY=<key> {prog} …   use a key directly (not saved)"))
 		return nil
 	}
 
@@ -86,9 +86,9 @@ func projectList() error {
 		}
 	}
 	fmt.Println()
-	fmt.Println("  hc project use <name>    switch active project")
-	fmt.Println("  hc project add           add another project")
-	fmt.Println("  hc project edit [name]   edit a project (default: active)")
+	fmt.Println(expand("  {prog} project use <name>    switch active project"))
+	fmt.Println(expand("  {prog} project add           add another project"))
+	fmt.Println(expand("  {prog} project edit [name]   edit a project (default: active)"))
 	return nil
 }
 
@@ -105,7 +105,7 @@ func projectHost(baseURL string) string {
 
 func projectUse(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: hc project use <name>")
+		return errors.New(expand("usage: {prog} project use <name>"))
 	}
 	name := args[0]
 
@@ -122,7 +122,7 @@ func projectUse(args []string) error {
 		}
 	}
 	if target == nil {
-		return fmt.Errorf("project %q not found — run 'hc project list'", name)
+		return fmt.Errorf(expand("project %q not found — run '{prog} project list'"), name)
 	}
 	if pf.Current == name {
 		fmt.Printf("Already on %q.\n", name)
@@ -188,7 +188,7 @@ func projectAdd(args []string) error {
 	}
 	for _, p := range pf.Projects {
 		if p.Name == name {
-			return fmt.Errorf("project %q already exists — use 'hc project use %s' to switch to it", name, name)
+			return fmt.Errorf(expand("project %q already exists — use '{prog} project use %s' to switch to it"), name, name)
 		}
 	}
 
@@ -212,8 +212,8 @@ func projectAdd(args []string) error {
 
 	// Optional ping key for slug-based check-ins. It's not available via the API,
 	// so it has to be pasted from the web UI; blank skips it (add it later with
-	// 'hc project edit').
-	fmt.Println("Ping key — find it in Project Settings on healthchecks.io; enables 'hc ping <slug>'. Leave blank to skip.")
+	// '<prog> project edit').
+	fmt.Println(expand("Ping key — find it in Project Settings on healthchecks.io; enables '{prog} ping <slug>'. Leave blank to skip."))
 	pingKeyVal, err := readSecret("Ping key: ")
 	if err != nil {
 		return err
@@ -331,7 +331,7 @@ func projectEdit(args []string) error {
 	}
 	if name == "" {
 		if pf.Current == "" {
-			return fmt.Errorf("no active project — specify one: hc project edit <name>")
+			return errors.New(expand("no active project — specify one: {prog} project edit <name>"))
 		}
 		name = pf.Current
 		// The Name prompt below shows which project, so don't repeat it here.
@@ -346,7 +346,7 @@ func projectEdit(args []string) error {
 		}
 	}
 	if idx < 0 {
-		return fmt.Errorf("project %q not found — run 'hc project list'", name)
+		return fmt.Errorf(expand("project %q not found — run '{prog} project list'"), name)
 	}
 	existing := pf.Projects[idx]
 
@@ -399,8 +399,8 @@ func projectEdit(args []string) error {
 
 	// Ping key — blank keeps the existing one, so this is also how you add a key
 	// to a project that didn't have one. find it in Project Settings on
-	// healthchecks.io; it enables 'hc ping <slug>'.
-	fmt.Println("Ping key — find it in Project Settings; enables 'hc ping <slug>'. Leave blank to keep.")
+	// healthchecks.io; it enables '<prog> ping <slug>'.
+	fmt.Println(expand("Ping key — find it in Project Settings; enables '{prog} ping <slug>'. Leave blank to keep."))
 	pingKeyVal, err := readSecret("Ping key: ")
 	if err != nil {
 		return err
@@ -523,7 +523,7 @@ func cmdCompleteProjects(_ *Client, _ *Config, _ []string) error {
 
 func projectRemove(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: hc project remove <name>")
+		return errors.New(expand("usage: {prog} project remove <name>"))
 	}
 	name := args[0]
 
@@ -540,7 +540,7 @@ func projectRemove(args []string) error {
 		}
 	}
 	if idx < 0 {
-		return fmt.Errorf("project %q not found — run 'hc project list'", name)
+		return fmt.Errorf(expand("project %q not found — run '{prog} project list'"), name)
 	}
 
 	if !confirm(fmt.Sprintf("Remove project %q?", name)) {

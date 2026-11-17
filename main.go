@@ -26,13 +26,13 @@ func main() {
 		usage()
 		return
 	case "-v", "--version", "version":
-		fmt.Printf("hc %s\n", version)
+		fmt.Printf("%s %s\n", prog, version)
 		return
 	}
 
 	cmd := lookupCommand(args[0])
 	if cmd == nil {
-		fmt.Fprintf(os.Stderr, "hc: unknown command %q\n\n", args[0])
+		fmt.Fprintf(os.Stderr, "%s: unknown command %q\n\n", prog, args[0])
 		usage()
 		os.Exit(2)
 	}
@@ -50,7 +50,7 @@ func main() {
 
 	// Every command parses its flags (including --help) before it ever touches
 	// the client or config, so a help request needs neither — honor it here,
-	// or 'hc <cmd> --help' fails for a user who hasn't configured an API key
+	// or '<prog> <cmd> --help' fails for a user who hasn't configured an API key
 	// yet, before it gets a chance to print anything.
 	if wantsHelp(args[1:]) {
 		if err := cmd.run(nil, nil, args[1:]); err != nil {
@@ -66,14 +66,14 @@ func main() {
 
 	// Every command below talks to the Management API with cfg.APIKey. If that
 	// key came from HC_API_KEY and shadows a different active project, say so —
-	// otherwise 'hc project use' looks broken.
+	// otherwise '<prog> project use' looks broken.
 	warnAPIKeyOverride()
 
 	if cmd.write && !cfg.AllowWrite {
 		handleExit(fmt.Errorf(
 			"%q is a write command but write access is disabled.\n"+
-				"Run 'hc project add' with a read-write key, or set HC_ALLOW_WRITE=1.",
-			cmd.name), jsonMode)
+				"Run '%s project add' with a read-write key, or set HC_ALLOW_WRITE=1.",
+			cmd.name, prog), jsonMode)
 	}
 
 	client := newClient(cfg)
@@ -93,7 +93,7 @@ func main() {
 //
 // In --json mode the error is emitted as a JSON object on stdout
 // ({"error":…,"status":…}) so success and failure share one parse path;
-// otherwise it's a plain "hc: …" line on stderr.
+// otherwise it's a plain "<prog>: …" line on stderr.
 func handleExit(err error, jsonMode bool) {
 	if errors.Is(err, flag.ErrHelp) {
 		os.Exit(0) // --help: usage already printed to stderr
@@ -124,7 +124,7 @@ func handleExit(err error, jsonMode bool) {
 		b, _ := json.Marshal(obj)
 		fmt.Fprintln(os.Stdout, string(b))
 	} else {
-		fmt.Fprintf(os.Stderr, "hc: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", prog, err)
 	}
 	os.Exit(code)
 }
@@ -194,13 +194,13 @@ func readLine() (string, error) {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `hc — a CLI for the healthchecks.io Management API
+	fmt.Fprint(os.Stderr, expand(`{prog} — a CLI for the healthchecks.io Management API
 
 Usage:
-  hc <command> [flags] [arguments]
+  {prog} <command> [flags] [arguments]
 
 Commands:
-`)
+`))
 	w := tabwriter.NewWriter(os.Stderr, 0, 2, 2, ' ', 0)
 	for _, c := range commands {
 		if c.hidden {
@@ -213,7 +213,7 @@ Commands:
 		fmt.Fprintf(w, "  %s\t%s%s\n", c.name, c.summary, marker)
 	}
 	w.Flush()
-	fmt.Fprintf(os.Stderr, `
+	fmt.Fprint(os.Stderr, expand(`
   help        Show this help
   version     Show version
 
@@ -223,21 +223,21 @@ Environment:
   HC_API_KEY      API key override — bypasses saved projects, useful for CI
   HC_BASE_URL     Management API base URL override
   HC_ALLOW_WRITE  set to 1/true to enable write commands for the current key
-  HC_PING_URL     ping host for 'hc ping' (default https://hc-ping.com;
+  HC_PING_URL     ping host for '{prog} ping' (default https://hc-ping.com;
                   for self-hosted, e.g. https://hc.example.com/ping)
-  HC_PING_KEY     project ping key, enabling 'hc ping <slug>' (otherwise read
+  HC_PING_KEY     project ping key, enabling '{prog} ping <slug>' (otherwise read
                   from the active project; find it in Project Settings)
   HC_NO_KEY_WARNING  set to 1/true to silence the per-command note shown when
                   HC_API_KEY/HC_PING_KEY overrides your active project
 
 Projects (persistent API key storage):
-  hc project add           add a project interactively
-  hc project edit [name]   edit a project (defaults to the active one)
-  hc project use <name>    switch active project
-  hc project list          list configured projects
+  {prog} project add           add a project interactively
+  {prog} project edit [name]   edit a project (defaults to the active one)
+  {prog} project use <name>    switch active project
+  {prog} project list          list configured projects
 
 Most commands accept --json to print the raw API response (NDJSON for lists).
-Run 'hc <command> --help' for a command's usage, flags, and examples.
+Run '{prog} <command> --help' for a command's usage, flags, and examples.
 
 Secrets:
   A check's uuid is its ping credential, so uuids and ping URLs are hidden by
@@ -248,15 +248,15 @@ Exit codes:
   0 success   1 error   2 usage   3 auth/forbidden   4 not found
 
 Examples:
-  hc checks
-  hc checks --status down            # filter by status (also --tag, --slug)
-  hc get <slug> --json
-  hc pings <slug>
-  hc pause <slug>                    # write commands accept a slug too
-  hc get <slug> --show-secrets       # reveal the uuid + ping URL
-  hc open <slug>                     # open the check's dashboard page
-  hc ping <slug>                     # signal success (needs a ping key)
-  hc ping <slug> fail                # signal failure (also: start, log, <exit-code>)
-  hc completion fish > ~/.config/fish/completions/hc.fish
-`)
+  {prog} checks
+  {prog} checks --status down            # filter by status (also --tag, --slug)
+  {prog} get <slug> --json
+  {prog} pings <slug>
+  {prog} pause <slug>                    # write commands accept a slug too
+  {prog} get <slug> --show-secrets       # reveal the uuid + ping URL
+  {prog} open <slug>                     # open the check's dashboard page
+  {prog} ping <slug>                     # signal success (needs a ping key)
+  {prog} ping <slug> fail                # signal failure (also: start, log, <exit-code>)
+  {prog} completion fish > ~/.config/fish/completions/{prog}.fish
+`))
 }

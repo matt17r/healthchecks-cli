@@ -1,9 +1,9 @@
 # Releasing & Homebrew install
 
-`hc` is distributed through a personal Homebrew **tap** (your own formula repo) as a
+`healthchecks-cli` is distributed through a personal Homebrew **tap** (your own formula repo) as a
 **cask** — Homebrew's format for prebuilt binaries (formulae are meant to compile
 from source). [GoReleaser](https://goreleaser.com) cross-compiles the binaries,
-attaches them to the GitHub release, and regenerates `Casks/hc.rb` to point at
+attaches them to the GitHub release, and regenerates `Casks/healthchecks-cli.rb` to point at
 them — so `brew install` just downloads the binary instead of compiling.
 
 Releases are cut **locally** (no CI) via `scripts/release.sh`, which uses your `gh`
@@ -23,7 +23,7 @@ on it first — goreleaser's template emits a stray blank line that the tap's
    brew tap-new matt17r/tap        # scaffolds a local homebrew-tap repo
    ```
 
-   Push it to `github.com/matt17r/homebrew-tap`. GoReleaser writes `Casks/hc.rb`
+   Push it to `github.com/matt17r/homebrew-tap`. GoReleaser writes `Casks/healthchecks-cli.rb`
    into it on each release, so you never hand-edit the cask or compute checksums.
 
 3. **Install the tooling:**
@@ -57,7 +57,7 @@ goreleaser release --snapshot --clean  # build everything into dist/, touch noth
 ```
 
 `--snapshot` doesn't need a tag or a token — handy for confirming the build matrix
-and the generated `dist/homebrew/Casks/hc.rb` before doing it for real.
+and the generated `dist/homebrew/Casks/healthchecks-cli.rb` before doing it for real.
 
 ### Why the cask isn't pushed by GoReleaser
 
@@ -71,13 +71,31 @@ unlinted cask and a red CI run on the tap.
 ## Installing
 
 ```sh
-brew install matt17r/tap/hc      # downloads the prebuilt binary from the release
-brew upgrade hc                  # picks up new releases once you bump the tag
+brew install matt17r/tap/healthchecks-cli      # downloads the prebuilt binary from the release
+brew upgrade healthchecks-cli                  # picks up new releases once you bump the tag
 ```
 
 ## Notes
 
-- `brew audit --cask --new matt17r/tap/hc` checks the generated cask before you
+- Users who want a short command can symlink one (see the README); the binary
+  names itself from `argv[0]`, so nothing in the cask or release needs to know.
+- **Renaming from `hc` (v0.6.0).** The old `hc` cask is migrated by the tap, not by
+  this repo. After `scripts/release.sh` has pushed `Casks/healthchecks-cli.rb`, make
+  one more commit to `matt17r/homebrew-tap`: delete `Casks/hc.rb` and add
+  `cask_renames.json` at the tap root (next to `Casks/`):
+
+  ```json
+  { "hc": "healthchecks-cli" }
+  ```
+
+  Do it in that order, so the new cask exists before the old name redirects to it.
+  Installed users then get moved by `brew update && brew upgrade --cask hc`: the old
+  cask is uninstalled and `healthchecks-cli` installed in its place. Homebrew refuses
+  to load casks from untrusted taps, so they may first need `brew trust matt17r/tap`.
+  The `hc` command disappears; anyone who wants a short name must re-create a symlink
+  (see the README) and regenerate shell completions under it.
+
+- `brew audit --cask --new matt17r/tap/healthchecks-cli` checks the generated cask before you
   publish.
 - The cask installs an **unsigned** binary, so the generated `postflight` strips the
   macOS quarantine xattr to avoid a Gatekeeper warning. Signing/notarising would

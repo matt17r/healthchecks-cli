@@ -65,7 +65,7 @@ func lookupCommand(name string) *command {
 
 // parsePermuted parses flags that may appear before, after, or interspersed
 // with positional arguments. The stdlib flag package stops at the first
-// positional, so "hc get <id> --json" would otherwise ignore --json. Returns
+// positional, so "<prog> get <id> --json" would otherwise ignore --json. Returns
 // the positional arguments in order.
 func parsePermuted(fs *flag.FlagSet, args []string) ([]string, error) {
 	var positionals []string
@@ -110,7 +110,7 @@ func asUsageError(err error) error {
 func newCmdFlags(name, help string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, strings.TrimRight(help, "\n"))
+		fmt.Fprintln(os.Stderr, expand(strings.TrimRight(help, "\n")))
 		printFlags(fs)
 	}
 	return fs
@@ -140,99 +140,99 @@ func printFlags(fs *flag.FlagSet) {
 
 // Per-command help text. Flags are appended automatically by newCmdFlags.
 const (
-	checksHelp = `hc checks — list checks (alias: ls)
+	checksHelp = `{prog} checks — list checks (alias: ls)
 
 Usage:
-  hc checks [--status <s>] [--tag <t>]... [--slug <s>] [--json] [--show-secrets]
+  {prog} checks [--status <s>] [--tag <t>]... [--slug <s>] [--json] [--show-secrets]
 
 Examples:
-  hc checks
-  hc checks --status down
-  hc checks --tag prod --json`
+  {prog} checks
+  {prog} checks --status down
+  {prog} checks --tag prod --json`
 
-	getHelp = `hc get — show a single check
+	getHelp = `{prog} get — show a single check
 
 Usage:
-  hc get <slug|uuid|unique_key> [--json] [--show-secrets]
+  {prog} get <slug|uuid|unique_key> [--json] [--show-secrets]
 
 Examples:
-  hc get nightly-backup
-  hc get nightly-backup --json`
+  {prog} get nightly-backup
+  {prog} get nightly-backup --json`
 
-	pingsHelp = `hc pings — list recent pings for a check
-
-Usage:
-  hc pings <slug|uuid|unique_key> [--json]`
-
-	flipsHelp = `hc flips — list status changes (flips) for a check
+	pingsHelp = `{prog} pings — list recent pings for a check
 
 Usage:
-  hc flips <slug|uuid|unique_key> [--json]`
+  {prog} pings <slug|uuid|unique_key> [--json]`
 
-	channelsHelp = `hc channels — list notification channels (integrations)
-
-Usage:
-  hc channels [--json]`
-
-	statusHelp = `hc status — show API/database availability
+	flipsHelp = `{prog} flips — list status changes (flips) for a check
 
 Usage:
-  hc status`
+  {prog} flips <slug|uuid|unique_key> [--json]`
 
-	openHelp = `hc open — open a check's page in your browser
+	channelsHelp = `{prog} channels — list notification channels (integrations)
 
 Usage:
-  hc open <slug|uuid> [--show-secrets]
+  {prog} channels [--json]`
+
+	statusHelp = `{prog} status — show API/database availability
+
+Usage:
+  {prog} status`
+
+	openHelp = `{prog} open — open a check's page in your browser
+
+Usage:
+  {prog} open <slug|uuid> [--show-secrets]
 
 Needs a read-write key (the dashboard URL contains the check's uuid).
 With --show-secrets the URL is written to stdout instead of opening a browser
 (handy on a headless/SSH box); that URL contains the uuid, so treat it as
 sensitive.`
 
-	pingHelp = `hc ping — check in to a check (a ping)
+	pingHelp = `{prog} ping — check in to a check (a ping)
 
 Usage:
-  hc ping <slug|uuid|full-url> [success|start|fail|log|<exit-code>] [--data <body>]
+  {prog} ping <slug|uuid|full-url> [success|start|fail|log|<exit-code>] [--data <body>]
 
 Pinging by slug needs a ping key (HC_PING_KEY, or saved on the project).
 A uuid or full ping URL is pinged directly and needs no ping key.
 
 Examples:
-  hc ping nightly-backup
-  hc ping nightly-backup fail
-  hc ping nightly-backup --data "done in 4m"`
+  {prog} ping nightly-backup
+  {prog} ping nightly-backup fail
+  {prog} ping nightly-backup --data "done in 4m"`
 
-	createHelp = `hc create — create a new check (write)
+	createHelp = `{prog} create — create a new check (write)
 
 Usage:
-  hc create --name <name> [field flags...] [--json] [--show-secrets]
+  {prog} create --name <name> [field flags...] [--json] [--show-secrets]
 
 Examples:
-  hc create --name "Nightly Backup" --tags "prod db" --timeout 86400 --grace 3600
-  hc create --name "Cron job" --schedule "*/5 * * * *" --tz UTC`
+  {prog} create --name "Nightly Backup" --tags "prod db" --timeout 86400 --grace 3600
+  {prog} create --name "Cron job" --schedule "*/5 * * * *" --tz UTC`
 
-	updateHelp = `hc update — update an existing check (write)
+	updateHelp = `{prog} update — update an existing check (write)
 
 Usage:
-  hc update <slug|uuid> [field flags...] [--json] [--show-secrets]
+  {prog} update <slug|uuid> [field flags...] [--json] [--show-secrets]
 
 Example:
-  hc update nightly-backup --grace 7200`
+  {prog} update nightly-backup --grace 7200`
 
-	pauseHelp = `hc pause — pause monitoring of a check (write)
-
-Usage:
-  hc pause <slug|uuid> [--json] [--show-secrets]`
-
-	resumeHelp = `hc resume — resume monitoring of a check (write)
+	pauseHelp = `{prog} pause — pause monitoring of a check (write)
 
 Usage:
-  hc resume <slug|uuid> [--json] [--show-secrets]`
+  {prog} pause <slug|uuid> [--json] [--show-secrets]`
 
-	deleteHelp = `hc delete — delete a check (write)
+	resumeHelp = `{prog} resume — resume monitoring of a check (write)
 
 Usage:
-  hc delete <slug|uuid> [--yes] [--json] [--show-secrets]`
+  {prog} resume <slug|uuid> [--json] [--show-secrets]`
+
+	deleteHelp = `{prog} delete — delete a check (write)
+
+Usage:
+  {prog} delete <slug|uuid> [--yes] [--json] [--show-secrets]`
 )
 
 // requireID pulls a single positional identifier from the parsed positionals.
@@ -594,7 +594,7 @@ func cmdPing(_ *Client, _ *Config, args []string) error {
 	default:
 		key := pingKey()
 		if key == "" {
-			return fmt.Errorf("pinging %q by slug needs a ping key — set HC_PING_KEY or run 'hc project edit <name>' to save one\n(or pass the check's uuid or full ping URL instead)", id)
+			return fmt.Errorf(expand("pinging %q by slug needs a ping key — set HC_PING_KEY or run '{prog} project edit <name>' to save one\n(or pass the check's uuid or full ping URL instead)"), id)
 		}
 		warnPingKeyOverride()
 		u = base + "/" + key + "/" + id

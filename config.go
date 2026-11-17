@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,7 +47,7 @@ func (pf *ProfilesFile) active() *Profile {
 
 // activeProfile is a best-effort lookup of the current saved project. A missing
 // or unreadable config simply yields nil, so callers can stay quiet rather than
-// error out (used by 'hc ping' and the override warnings).
+// error out (used by '<prog> ping' and the override warnings).
 func activeProfile() *Profile {
 	pf, err := loadProfilesFile()
 	if err != nil {
@@ -69,17 +70,17 @@ func apiKeyOverrideDesc(pf *ProfilesFile, selName, selKey string) string {
 	}
 	for i := range pf.Projects {
 		if pf.Projects[i].APIKey == env {
-			return fmt.Sprintf("HC_API_KEY is set and matches project %q — 'hc' commands show that project, not %q, until you unset HC_API_KEY.",
-				pf.Projects[i].Name, selName)
+			return fmt.Sprintf("HC_API_KEY is set and matches project %q — '%s' commands show that project, not %q, until you unset HC_API_KEY.",
+				pf.Projects[i].Name, prog, selName)
 		}
 	}
-	return fmt.Sprintf("HC_API_KEY is set — 'hc' commands use that key, not project %q, until you unset HC_API_KEY.", selName)
+	return fmt.Sprintf("HC_API_KEY is set — '%s' commands use that key, not project %q, until you unset HC_API_KEY.", prog, selName)
 }
 
 // warnAPIKeyOverride prints a one-line note to stderr when HC_API_KEY shadows the
-// active project with a *different* project — the case where 'hc project use'
+// active project with a *different* project — the case where '<prog> project use'
 // appears to have no effect because the environment key silently wins (see
-// loadConfig). It's the terse per-command safety net; 'hc project use/add/list'
+// loadConfig). It's the terse per-command safety net; '<prog> project use/add/list'
 // give the fuller version. HC_NO_KEY_WARNING silences this repetitive warning
 // (the project-command notes stay, since those are deliberate one-offs).
 func warnAPIKeyOverride() {
@@ -95,7 +96,7 @@ func warnAPIKeyOverride() {
 		return // just an env key in play; no selection to shadow
 	}
 	if desc := apiKeyOverrideDesc(pf, active.Name, active.APIKey); desc != "" {
-		fmt.Fprintf(os.Stderr, "hc: note: %s\n", desc)
+		fmt.Fprintf(os.Stderr, "%s: note: %s\n", prog, desc)
 	}
 }
 
@@ -113,8 +114,8 @@ func warnPingKeyOverride() {
 	}
 	if p := activeProfile(); p != nil && p.PingKey != "" && p.PingKey != env {
 		fmt.Fprintf(os.Stderr,
-			"hc: note: HC_PING_KEY is set — pinging via that key, not your selected project %q's ping key. Unset HC_PING_KEY to use the project.\n",
-			p.Name)
+			"%s: note: HC_PING_KEY is set — pinging via that key, not your selected project %q's ping key. Unset HC_PING_KEY to use the project.\n",
+			prog, p.Name)
 	}
 }
 
@@ -138,11 +139,11 @@ func loadConfig() (*Config, error) {
 		return nil, err
 	}
 	if len(pf.Projects) == 0 || pf.Current == "" {
-		return nil, fmt.Errorf("no API key configured — set HC_API_KEY or run 'hc project add'")
+		return nil, errors.New(expand("no API key configured — set HC_API_KEY or run '{prog} project add'"))
 	}
 	p := pf.active()
 	if p == nil {
-		return nil, fmt.Errorf("active project %q not found — run 'hc project list'", pf.Current)
+		return nil, fmt.Errorf(expand("active project %q not found — run '{prog} project list'"), pf.Current)
 	}
 
 	baseURL := p.BaseURL
@@ -161,7 +162,7 @@ func loadConfig() (*Config, error) {
 
 // pingKey resolves the key for slug-based pinging. HC_PING_KEY wins (handy for
 // CI); otherwise the active saved project's stored key is used. Best-effort: a
-// missing or unreadable config simply yields "". Needs no API key, so 'hc ping'
+// missing or unreadable config simply yields "". Needs no API key, so '<prog> ping'
 // can stay standalone.
 func pingKey() string {
 	if k := cleanAPIKey(os.Getenv("HC_PING_KEY")); k != "" {

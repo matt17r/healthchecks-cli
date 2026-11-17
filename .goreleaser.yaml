@@ -1,15 +1,15 @@
-# GoReleaser configuration for hc.
+# GoReleaser configuration for healthchecks-cli.
 # Driven locally (no CI) — see RELEASING.md. Validate with `goreleaser check`.
 version: 2
 
-project_name: hc
+project_name: healthchecks-cli
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - binary: hc
+  - binary: healthchecks-cli
     main: .
     env:
       - CGO_ENABLED=0
@@ -52,13 +52,13 @@ changelog:
       - "^test:"
       - "^chore:"
 
-# Generates Casks/hc.rb into dist/. We deliberately DON'T let goreleaser push it
+# Generates Casks/healthchecks-cli.rb into dist/. We deliberately DON'T let goreleaser push it
 # to the tap (skip_upload): goreleaser would generate and push in one step,
 # leaving no gap to lint the cask, and its template emits a stray blank line that
 # trips brew's Layout/EmptyLinesAroundBlockBody audit. Instead scripts/release.sh
 # runs `brew style --fix` on the generated cask and pushes it to the tap.
 homebrew_casks:
-  - name: hc
+  - name: healthchecks-cli
     skip_upload: "true"
     repository:
       owner: matt17r
@@ -72,12 +72,12 @@ homebrew_casks:
       name: Matthew Lindfield Seager
       email: matt@matt17r.com
     # The binary is unsigned, so macOS Gatekeeper quarantines it on download.
-    # Strip the quarantine xattr on install so `hc` runs without a warning.
+    # Strip the quarantine xattr on install so `healthchecks-cli` runs without a warning.
     hooks:
       post:
         # install_steps uses Homebrew's declarative steps DSL (postflight_steps);
         # the raw-Ruby `install` option emits the deprecated postflight stanza.
         install_steps: |
           on_macos do
-            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/hc"]
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/healthchecks-cli"]
           end
