@@ -390,7 +390,7 @@ func cmdGet(c *Client, cfg *Config, args []string) error {
 func cmdPings(c *Client, cfg *Config, args []string) error {
 	fs := newCmdFlags("pings", pingsHelp)
 	jsonOut := fs.Bool("json", false, "output raw JSON")
-	bodyN := fs.Int("body", 0, "print the logged body of ping number N")
+	bodyN := fs.Int("body", -1, "print the logged body of ping number N")
 	pos, err := parsePermuted(fs, args)
 	if err != nil {
 		return err
@@ -404,7 +404,7 @@ func cmdPings(c *Client, cfg *Config, args []string) error {
 		return err
 	}
 
-	if *bodyN != 0 {
+	if *bodyN != -1 {
 		if *bodyN < 1 {
 			return fmt.Errorf("--body must be a ping number (1 or greater)")
 		}
