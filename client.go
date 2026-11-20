@@ -126,6 +126,10 @@ type checksResponse struct {
 	Checks []Check `json:"checks"`
 }
 
+type pingsResponse struct {
+	Pings []Ping `json:"pings"`
+}
+
 type Ping struct {
 	Type     string  `json:"type"`
 	Date     string  `json:"date"`
@@ -245,11 +249,11 @@ func (c *Client) ListPings(id string) ([]Ping, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	var out []Ping
+	var out pingsResponse
 	if err := json.Unmarshal(data, &out); err != nil {
 		return nil, data, err
 	}
-	return out, data, nil
+	return out.Pings, data, nil
 }
 
 func (c *Client) ListFlips(id string) ([]Flip, []byte, error) {

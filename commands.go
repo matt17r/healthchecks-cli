@@ -404,7 +404,7 @@ func cmdPings(c *Client, cfg *Config, args []string) error {
 		return err
 	}
 	if *jsonOut {
-		return printNDJSON(raw, "", true) // pings carry no secrets
+		return printNDJSON(raw, "pings", true) // pings carry no secrets
 	}
 	if len(pings) == 0 {
 		fmt.Println("No pings found.")
