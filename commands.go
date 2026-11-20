@@ -162,7 +162,11 @@ Examples:
 	pingsHelp = `{prog} pings — list recent pings for a check
 
 Usage:
-  {prog} pings <slug|uuid|unique_key> [--json]`
+  {prog} pings <slug|uuid|unique_key> [--json]
+  {prog} pings <slug|uuid> --body <n>
+
+--body <n> prints the logged body of ping number n (the # column) verbatim.
+Bodies are only available via uuid, so read-only keys cannot fetch them.`
 
 	flipsHelp = `{prog} flips — list status changes (flips) for a check
 
@@ -386,6 +390,7 @@ func cmdGet(c *Client, cfg *Config, args []string) error {
 func cmdPings(c *Client, cfg *Config, args []string) error {
 	fs := newCmdFlags("pings", pingsHelp)
 	jsonOut := fs.Bool("json", false, "output raw JSON")
+	bodyN := fs.Int("body", 0, "print the logged body of ping number N")
 	pos, err := parsePermuted(fs, args)
 	if err != nil {
 		return err
@@ -396,6 +401,21 @@ func cmdPings(c *Client, cfg *Config, args []string) error {
 	}
 	id, err = c.resolveID(id)
 	if err != nil {
+		return err
+	}
+
+	if *bodyN != 0 {
+		if *bodyN < 1 {
+			return fmt.Errorf("--body must be a ping number (1 or greater)")
+		}
+		body, err := c.GetPingBody(id, *bodyN)
+		if err != nil {
+			if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {
+				return fmt.Errorf("ping #%d has no logged body (or does not exist)", *bodyN)
+			}
+			return err
+		}
+		_, err = os.Stdout.Write(body)
 		return err
 	}
 

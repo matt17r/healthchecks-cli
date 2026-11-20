@@ -132,6 +132,7 @@ healthchecks-cli checks --tag prod --tag db  # filter by tag (repeatable, AND)
 healthchecks-cli checks --slug nightly-backup
 healthchecks-cli get <slug>                  # show one check (uuid/unique_key also accepted)
 healthchecks-cli pings <slug>                # recent pings
+healthchecks-cli pings <slug> --body <n>     # logged body of ping #n
 healthchecks-cli flips <slug>                # status changes
 healthchecks-cli channels                    # notification integrations
 healthchecks-cli status                      # API/database availability

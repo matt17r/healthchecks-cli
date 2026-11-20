@@ -256,6 +256,11 @@ func (c *Client) ListPings(id string) ([]Ping, []byte, error) {
 	return out.Pings, data, nil
 }
 
+// GetPingBody returns the logged body of ping number n, verbatim.
+func (c *Client) GetPingBody(id string, n int) ([]byte, error) {
+	return c.do(http.MethodGet, fmt.Sprintf("checks/%s/pings/%d/body", id, n), nil)
+}
+
 func (c *Client) ListFlips(id string) ([]Flip, []byte, error) {
 	data, err := c.do(http.MethodGet, "checks/"+id+"/flips/", nil)
 	if err != nil {
